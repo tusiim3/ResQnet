@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 //import 'package:resqnet/screens/alert_feed_screen.dart';
 import 'package:resqnet/screens/register_screen.dart';
 import 'package:resqnet/screens/Home_Screen.dart';
-
-import 'package:resqnet/services/auth_service.dart';
 import 'package:resqnet/services/user_service.dart';
 
 

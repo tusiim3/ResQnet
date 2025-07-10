@@ -15,4 +15,22 @@ class UserService {
     }
     return null;
   }
+
+  // Save new user data
+  Future<void> saveUserDataCustom({
+    required String fullName,
+    required String username,
+    required String email,
+    required String phone,
+    required String password,
+  }) async {
+    await _db.collection('users').add({
+      'fullName': fullName,
+      'username': username,
+      'email': email,
+      'phone': phone,
+      'password': password,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
 }
