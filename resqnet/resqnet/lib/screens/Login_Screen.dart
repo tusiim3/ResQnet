@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-// import 'package:resqnet/screens/alert_feed_screen.dart';
+//import 'package:resqnet/screens/alert_feed_screen.dart';
 import 'package:resqnet/screens/register_screen.dart';
 import 'package:resqnet/screens/Home_Screen.dart';
+import 'package:resqnet/services/user_service.dart';
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -19,6 +20,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _rememberMe = false;
   bool _obscurePassword = true;
+
+  final UserService _userService = UserService();
 
   @override
   void dispose() {
@@ -335,16 +338,44 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _handleLogin() {
-    // // Implement login logic
-    // String phoneNumber = _phoneController.text.trim();
-    // String password = _passwordController.text.trim();
+ // The new login logic for phone+password
+  void _handleLogin() async {
+    final phone = _phoneController.text.trim();
+    final password = _passwordController.text.trim();
 
-    // // TODO: Add authentication logic
-    // // For now, navigate to home screen
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const HomeScreen()),
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(child: CircularProgressIndicator()),
     );
+
+    try {
+      final userData = await _userService.getUserByPhone(phone);
+      Navigator.of(context).pop(); // Remove loading indicator
+
+      if (userData == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No user found with this phone number.')),
+        );
+        return;
+      }
+
+      if (userData['password'] == password) { // In production, use hashed passwords!
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Incorrect password.')),
+        );
+      }
+    } catch (e) {
+      Navigator.of(context).pop(); // Remove loading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Login failed: $e')),
+      );
+    }
   }
 }

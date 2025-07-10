@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "717238350591",
-    "project_id": "resqnet-25",
-    "storage_bucket": "resqnet-25.firebasestorage.app"
+    "project_number": "341222348718",
+    "project_id": "smartbodahelmet",
+    "storage_bucket": "smartbodahelmet.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:717238350591:android:ef2b7f9151c920707292ca",
+        "mobilesdk_app_id": "1:341222348718:android:624a84f071548cc8a99a3f",
         "android_client_info": {
           "package_name": "com.example.resqnet"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyAIb5jpA473QRPdp19Un2OvM5amxsK-b50"
+          "current_key": "AIzaSyDpqckP9SVY0RE93yiIzvY4e1-_t1-zY24"
         }
       ],
       "services": {
