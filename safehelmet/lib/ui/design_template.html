@@ -1,0 +1,735 @@
+
+<!DOCTYPE html>
+<html lang="en">
+    
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Boda Helmet - UI Design</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .design-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #FF6B6B, #FF8E8E);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .screens-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            padding: 40px;
+        }
+        
+        .screen {
+            background: #f8f9fa;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .screen:hover {
+            transform: translateY(-5px);
+        }
+        
+        .screen-header {
+            background: linear-gradient(135deg, #4A90E2, #357ABD);
+            color: white;
+            padding: 20px;
+            font-weight: 600;
+            font-size: 1.2em;
+        }
+        
+        .phone-mockup {
+            width: 280px;
+            height: 580px;
+            background: #000;
+            border-radius: 30px;
+            padding: 8px;
+            margin: 20px auto;
+            position: relative;
+        }
+        
+        .phone-screen {
+            width: 100%;
+            height: 100%;
+            background: white;
+            border-radius: 22px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .status-bar {
+            background: #000;
+            color: white;
+            padding: 8px 15px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .app-content {
+            padding: 20px;
+            height: calc(100% - 32px);
+            overflow-y: auto;
+        }
+        /* Alert Feed */
+        .alert-item {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .alert-urgent {
+            border-left: 5px solid #E74C3C;
+        }
+        
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+        
+        .alert-title {
+            font-weight: 600;
+            color: #2C3E50;
+            margin-bottom: 5px;
+        }
+        
+        .alert-time {
+            color: #7F8C8D;
+            font-size: 12px;
+        }
+        
+        .alert-status {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .status-urgent {
+            background: #FFE8E8;
+            color: #E74C3C;
+        }
+        
+        .alert-location {
+            color: #7F8C8D;
+            margin-bottom: 15px;
+        }
+        
+        .alert-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn-respond {
+            flex: 1;
+            padding: 10px;
+            background: #2ECC71;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+        
+        .btn-dismiss {
+            flex: 1;
+            padding: 10px;
+            background: #95A5A6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+         /* Home Screen */
+        .home-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        
+        .welcome-text {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2C3E50;
+        }
+        
+        .status-indicator {
+            padding: 8px 16px;
+            background: #2ECC71;
+            color: white;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 28px;
+            font-weight: 700;
+            color: #4A90E2;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            color: #7F8C8D;
+            font-size: 14px;
+        }
+        
+        .emergency-btn {
+            width: 100%;
+            padding: 20px;
+            background: linear-gradient(135deg, #E74C3C, #C0392B);
+            color: white;
+            border: none;
+            border-radius: 15px;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        
+        .quick-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .action-btn {
+            padding: 15px;
+            background: #F8F9FA;
+            border: 2px solid #E8E8E8;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .action-btn:hover {
+            background: #4A90E2;
+            color: white;
+        }
+         /* Login Screen */
+        .login-screen {
+            text-align: center;
+            padding-top: 80px;
+        }
+        
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #FF6B6B, #FF8E8E);
+            border-radius: 20px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            color: white;
+        }
+        
+        .login-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #2C3E50;
+            margin-bottom: 10px;
+        }
+        
+        .login-subtitle {
+            color: #7F8C8D;
+            margin-bottom: 40px;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        
+        .input-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #2C3E50;
+        }
+        
+        .input-field {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #E8E8E8;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        .input-field:focus {
+            border-color: #4A90E2;
+            outline: none;
+        }
+        
+        .btn-primary {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #FF6B6B, #FF8E8E);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        
+        .btn-secondary {
+            color: #4A90E2;
+            text-decoration: none;
+            font-weight: 500;
+            margin-top: 20px;
+            display: inline-block;
+        }
+        /* Map Screen */
+        .map-container {
+            width: 100%;
+            height: 350px;
+            background: linear-gradient(135deg, #A8E6CF, #7FB069);
+            border-radius: 15px;
+            position: relative;
+            margin-bottom: 20px;
+        }
+        
+        .map-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="3" fill="%23E74C3C"/><circle cx="30" cy="70" r="2" fill="%232ECC71"/><circle cx="70" cy="30" r="2" fill="%232ECC71"/></svg>') no-repeat center;
+            background-size: 80% 80%;
+        }
+        
+        .map-legend {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        
+        .legend-crash {
+            background: #E74C3C;
+        }
+        
+        .legend-responder {
+            background: #2ECC71;
+        }
+        
+        .legend-text {
+            font-size: 14px;
+            color: #2C3E50;
+        }
+        
+        .location-info {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .design-notes {
+            background: #F8F9FA;
+            padding: 30px;
+            border-top: 3px solid #4A90E2;
+        }
+        
+        .design-notes h3 {
+            color: #2C3E50;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+        
+        .notes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        
+        .note-item {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #4A90E2;
+        }
+        
+        .note-title {
+            font-weight: 600;
+            color: #2C3E50;
+            margin-bottom: 10px;
+        }
+        
+        .note-content {
+            color: #7F8C8D;
+            line-height: 1.5;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="design-container">
+        <div class="header">
+            <h1>🏍️ Smart Boda Helmet</h1>
+            <p>Emergency Alert System - UI Design Mockups</p>
+        </div>
+        
+        <div class="screens-grid">
+            <!-- Login Screen -->
+            <div class="screen">
+                <div class="screen-header">
+                    📱 Login Screen
+                </div>
+                <div class="phone-mockup">
+                    <div class="phone-screen">
+                        <div class="status-bar">
+                            <span>9:41</span>
+                            <span>●●●●● 100%</span>
+                        </div>
+                        <div class="app-content login-screen">
+                            <div class="logo">🏍️</div>
+                            <h2 class="login-title">SafeRide</h2>
+                            <p class="login-subtitle">Stay Protected, Stay Connected</p>
+                            
+                            <div class="input-group">
+                                <label class="input-label">Phone Number</label>
+                                <input type="tel" class="input-field" placeholder="+256 700 000 000">
+                            </div>
+                            
+                            <div class="input-group">
+                                <label class="input-label">Password</label>
+                                <input type="password" class="input-field" placeholder="Enter your password">
+                            </div>
+                            
+                            <button class="btn-primary">Sign In</button>
+                            <a href="#" class="btn-secondary">Create Account</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Register Screen -->
+            <div class="screen">
+                <div class="screen-header">
+                    📝 Register Screen
+                </div>
+                <div class="phone-mockup">
+                    <div class="phone-screen">
+                        <div class="status-bar">
+                            <span>9:41</span>
+                            <span>●●●●● 100%</span>
+                        </div>
+                        <div class="app-content login-screen">
+                            <div class="logo">🏍️</div>
+                            <h2 class="login-title">Join SafeRide</h2>
+                            <p class="login-subtitle">Create your safety profile</p>
+                            
+                            <div class="input-group">
+                                <label class="input-label">Full Name</label>
+                                <input type="text" class="input-field" placeholder="John Doe">
+                            </div>
+                            
+                            <div class="input-group">
+                                <label class="input-label">Phone Number</label>
+                                <input type="tel" class="input-field" placeholder="+256 700 000 000">
+                            </div>
+                            
+                            <div class="input-group">
+                                <label class="input-label">Password</label>
+                                <input type="password" class="input-field" placeholder="Create password">
+                            </div>
+                            
+                            <button class="btn-primary">Create Account</button>
+                            <a href="#" class="btn-secondary">Already have an account?</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Home Screen -->
+            <div class="screen">
+                <div class="screen-header">
+                    🏠 Home Dashboard
+                </div>
+                <div class="phone-mockup">
+                    <div class="phone-screen">
+                        <div class="status-bar">
+                            <span>9:41</span>
+                            <span>●●●●● 100%</span>
+                        </div>
+                        <div class="app-content">
+                            <div class="home-header">
+                                <div class="welcome-text">Good Morning!</div>
+                                <div class="status-indicator">Online</div>
+                            </div>
+                            
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-number">24</div>
+                                    <div class="stat-label">Trips Today</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-number">156</div>
+                                    <div class="stat-label">Total Trips</div>
+                                </div>
+                            </div>
+                            
+                            <button class="emergency-btn">🚨 Emergency Alert</button>
+                            
+                            <div class="quick-actions">
+                                <div class="action-btn">
+                                    <div>📍</div>
+                                    <div>View Map</div>
+                                </div>
+                                <div class="action-btn">
+                                    <div>🔔</div>
+                                    <div>Alerts</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Alert Feed Screen -->
+            <div class="screen">
+                <div class="screen-header">
+                    🚨 Alert Feed
+                </div>
+                <div class="phone-mockup">
+                    <div class="phone-screen">
+                        <div class="status-bar">
+                            <span>9:41</span>
+                            <span>●●●●● 100%</span>
+                        </div>
+                        <div class="app-content">
+                            <div class="alert-item alert-urgent">
+                                <div class="alert-header">
+                                    <div>
+                                        <div class="alert-title">Crash Alert - Urgent</div>
+                                        <div class="alert-time">2 minutes ago</div>
+                                    </div>
+                                    <div class="alert-status status-urgent">URGENT</div>
+                                </div>
+                                <div class="alert-location">📍 Kampala Road, near Garden City</div>
+                                <div class="alert-actions">
+                                    <button class="btn-respond">Respond</button>
+                                    <button class="btn-dismiss">Dismiss</button>
+                                </div>
+                            </div>
+                            
+                            <div class="alert-item">
+                                <div class="alert-header">
+                                    <div>
+                                        <div class="alert-title">Minor Incident</div>
+                                        <div class="alert-time">15 minutes ago</div>
+                                    </div>
+                                    <div class="alert-status" style="background: #FFF3CD; color: #856404;">INFO</div>
+                                </div>
+                                <div class="alert-location">📍 Jinja Road, Stage</div>
+                                <div class="alert-actions">
+                                    <button class="btn-respond">Respond</button>
+                                    <button class="btn-dismiss">Dismiss</button>
+                                </div>
+                            </div>
+                            
+                            <div class="alert-item">
+                                <div class="alert-header">
+                                    <div>
+                                        <div class="alert-title">Resolved: Breakdown</div>
+                                        <div class="alert-time">1 hour ago</div>
+                                    </div>
+                                    <div class="alert-status" style="background: #D4E6F1; color: #2C3E50;">RESOLVED</div>
+                                </div>
+                                <div class="alert-location">📍 Entebbe Road</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Map Screen -->
+            <div class="screen">
+                <div class="screen-header">
+                    🗺️ Emergency Map
+                </div>
+                <div class="phone-mockup">
+                    <div class="phone-screen">
+                        <div class="status-bar">
+                            <span>9:41</span>
+                            <span>●●●●● 100%</span>
+                        </div>
+                        <div class="app-content">
+                            <div class="map-container">
+                                <div class="map-overlay"></div>
+                            </div>
+                            
+                            <div class="map-legend">
+                                <div class="legend-item">
+                                    <div class="legend-dot legend-crash"></div>
+                                    <span class="legend-text">Crash Site</span>
+                                </div>
+                                <div class="legend-item">
+                                    <div class="legend-dot legend-responder"></div>
+                                    <span class="legend-text">Responders</span>
+                                </div>
+                            </div>
+                            
+                            <div class="location-info">
+                                <div class="alert-title">Active Emergency</div>
+                                <div class="alert-location">📍 Kampala Road, near Garden City</div>
+                                <div style="margin-top: 10px; color: #7F8C8D;">
+                                    <strong>Distance:</strong> 0.8 km away<br>
+                                    <strong>Responders:</strong> 2 nearby
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="design-notes">
+            <h3>🎨 Design System & Guidelines</h3>
+            <div class="notes-grid">
+                <div class="note-item">
+                    <div class="note-title">Color Scheme</div>
+                    <div class="note-content">
+                        Primary: #4A90E2 (Blue)<br>
+                        Emergency: #E74C3C (Red)<br>
+                        Success: #2ECC71 (Green)<br>
+                        Background: #F8F9FA<br>
+                        Text: #2C3E50
+                    </div>
+                </div>
+                
+                <div class="note-item">
+                    <div class="note-title">Typography</div>
+                    <div class="note-content">
+                        Font: SF Pro Display<br>
+                        Headers: 24-28px, Bold<br>
+                        Body: 16px, Regular<br>
+                        Buttons: 18px, Semi-bold<br>
+                        Captions: 14px, Regular
+                    </div>
+                </div>
+                
+                <div class="note-item">
+                    <div class="note-title">Components</div>
+                    <div class="note-content">
+                        Button radius: 10px<br>
+                        Card radius: 15px<br>
+                        Input height: 50px<br>
+                        Emergency button: Prominent red<br>
+                        Status indicators: Colored badges
+                    </div>
+                </div>
+                
+                <div class="note-item">
+                    <div class="note-title">User Flow</div>
+                    <div class="note-content">
+                        1. Login/Register with phone<br>
+                        2. Dashboard shows status<br>
+                        3. Receive push notifications<br>
+                        4. View alerts in feed<br>
+                        5. Respond or dismiss alerts<br>
+                        6. Track on map
+                    </div>
+                </div>
+                
+                <div class="note-item">
+                    <div class="note-title">Emergency Features</div>
+                    <div class="note-content">
+                        Red emergency button<br>
+                        Push notifications<br>
+                        Location tracking<br>
+                        Response status updates<br>
+                        Map with crash sites<br>
+                        Responder proximity
+                    </div>
+                </div>
+                
+                <div class="note-item">
+                    <div class="note-title">Technical Notes</div>
+                    <div class="note-content">
+                        Flutter framework<br>
+                        Firebase authentication<br>
+                        Google Maps integration<br>
+                        Firebase Cloud Messaging<br>
+                        Real-time database updates<br>
+                        REST API endpoints
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
