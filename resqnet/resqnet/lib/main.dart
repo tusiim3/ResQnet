@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
-// import 'screens/SignUp_Screen.dart';
-import 'screens/Login_Screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'screens/Login_Screen.dart';
 
-Future <void> main() async {
+// Import the SMS service
+import 'services/sms_service.dart';
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  runApp(MyApp());
+  //Start listening for SMS
+  SmsService().initSmsListener();
+
+  runApp(const MyApp());
 }
 
-// MyApp widget
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
