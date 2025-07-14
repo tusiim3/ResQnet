@@ -1,0 +1,160 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:math';
+
+class LocationService {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Save real-time location from helmet
+  Future<void> saveLocation({
+    required double latitude,
+    required double longitude,
+    required String helmetId,
+    String? address,
+    double? speed,
+    double? heading,
+  }) async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return;
+
+    await _db.collection('locations').add({
+      'userId': userId,
+      'helmetId': helmetId,
+      'latitude': latitude,
+      'longitude': longitude,
+      'address': address,
+      'speed': speed,
+      'heading': heading,
+      'timestamp': FieldValue.serverTimestamp(),
+      'isActive': true,
+    });
+
+    // Also update user's current location
+    await _db.collection('users').doc(userId).update({
+      'currentLocation': {
+        'latitude': latitude,
+        'longitude': longitude,
+        'timestamp': FieldValue.serverTimestamp(),
+      }
+    });
+  }
+
+  // Get user's current location
+  Future<Map<String, dynamic>?> getCurrentLocation(String userId) async {
+    final doc = await _db.collection('users').doc(userId).get();
+    if (doc.exists && doc.data()?['currentLocation'] != null) {
+      return doc.data()?['currentLocation'] as Map<String, dynamic>;
+    }
+    return null;
+  }
+
+  // Get location history for a user
+  Stream<QuerySnapshot> getLocationHistory(String userId, {int limit = 100}) {
+    return _db
+        .collection('locations')
+        .where('userId', isEqualTo: userId)
+        .orderBy('timestamp', descending: true)
+        .limit(limit)
+        .snapshots();
+  }
+
+  // Save emergency location when crash is detected
+  Future<void> saveEmergencyLocation({
+    required double latitude,
+    required double longitude,
+    required String helmetId,
+    required String alertType,
+    String? additionalInfo,
+  }) async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return;
+
+    await _db.collection('emergency_locations').add({
+      'userId': userId,
+      'helmetId': helmetId,
+      'latitude': latitude,
+      'longitude': longitude,
+      'alertType': alertType, // 'crash', 'panic', 'low_battery', etc.
+      'additionalInfo': additionalInfo,
+      'timestamp': FieldValue.serverTimestamp(),
+      'isResolved': false,
+      'responseTime': null,
+    });
+  }
+
+  // Get emergency locations for monitoring dashboard
+  Stream<QuerySnapshot> getEmergencyLocations() {
+    return _db
+        .collection('emergency_locations')
+        .where('isResolved', isEqualTo: false)
+        .orderBy('timestamp', descending: true)
+        .snapshots();
+  }
+
+  // Mark emergency as resolved
+  Future<void> resolveEmergency(String emergencyId) async {
+    await _db.collection('emergency_locations').doc(emergencyId).update({
+      'isResolved': true,
+      'resolvedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // Get nearby riders (for community features)
+  Future<List<Map<String, dynamic>>> getNearbyRiders({
+    required double latitude,
+    required double longitude,
+    double radiusKm = 5.0,
+  }) async {
+    // Guys we'll have to use GeoFirestore for better calculations. I've left these simplified ones as place holders
+    final snapshot = await _db
+        .collection('users')
+        .where('currentLocation', isNotEqualTo: null)
+        .get();
+
+    List<Map<String, dynamic>> nearbyRiders = [];
+
+    for (var doc in snapshot.docs) {
+      final data = doc.data();
+      final currentLocation = data['currentLocation'] as Map<String, dynamic>?;
+
+      if (currentLocation != null) {
+        final riderLat = currentLocation['latitude'] as double;
+        final riderLng = currentLocation['longitude'] as double;
+
+        // Calculate distance
+        final distance = _calculateDistance(latitude, longitude, riderLat, riderLng);
+
+        if (distance <= radiusKm) {
+          nearbyRiders.add({
+            'userId': doc.id,
+            'username': data['username'] ?? 'Unknown',
+            'latitude': riderLat,
+            'longitude': riderLng,
+            'distance': distance,
+          });
+        }
+      }
+    }
+
+    return nearbyRiders;
+  }
+
+  double _calculateDistance(double lat1, double lng1, double lat2, double lng2) {
+    const double earthRadius = 6371; // km
+    final double dLat = _toRadians(lat2 - lat1);
+    final double dLng = _toRadians(lng2 - lng1);
+
+    final double a =
+        sin(dLat / 2) * sin(dLat / 2) +
+            cos(_toRadians(lat1)) * cos(_toRadians(lat2)) *
+                sin(dLng / 2) * sin(dLng / 2);
+
+    final double c = 2 * asin(sqrt(a));
+    return earthRadius * c;
+  }
+
+  double _toRadians(double degrees) {
+    return degrees * (pi / 180);
+  }
+}
