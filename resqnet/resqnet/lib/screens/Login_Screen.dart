@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 // import 'package:resqnet/screens/alert_feed_screen.dart';
 import 'package:resqnet/screens/register_screen.dart';
-import 'package:resqnet/screens/Home_Screen.dart';
+import 'package:resqnet/screens/home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+  const LoginScreen({super.key, required this.toggleTheme, required this.isDarkTheme});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -290,11 +292,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       //Create Account Link
                       TextButton(
                         onPressed: () {
-                          // Navigate to register screen
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const RegisterScreen(),
+                              builder: (context) => RegisterScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
                             ),
                           );
                         },
@@ -336,15 +337,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _handleLogin() {
-    // // Implement login logic
-    // String phoneNumber = _phoneController.text.trim();
-    // String password = _passwordController.text.trim();
-
-    // // TODO: Add authentication logic
-    // // For now, navigate to home screen
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => const HomeScreen()),
+      MaterialPageRoute(builder: (context) => HomeScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme)),
     );
   }
 }

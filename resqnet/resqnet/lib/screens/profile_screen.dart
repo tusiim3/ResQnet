@@ -1,15 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:resqnet/screens/Login_Screen.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:geolocator/geolocator.dart';
+import 'Login_Screen.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+
+  const ProfileScreen({super.key, required this.toggleTheme, required this.isDarkTheme});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
   bool isOnline = true;
   String userName = "Baelish 😎!";
   String userEmail = "baelish@resqnet.com";
@@ -19,405 +27,148 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int responseRate = 94;
   double rating = 4.8;
 
+  File? _profileImage;
+  bool notificationsEnabled = false;
+  bool locationEnabled = false;
+  String currentLocation = '';
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+
+  late TabController _tabController;
+
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2C3E50)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Profile',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF2C3E50),
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit, color: Color(0xFF4A90E2)),
-            onPressed: () {
-              _editProfile();
-            },
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Profile Header
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
-                ),
-              ),
-              child: Column(
-                children: [
-                  // Profile Picture
-                  Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Color(0xFF4A90E2), Color(0xFF2ECC71)],
-                      ),
-                      borderRadius: BorderRadius.circular(50),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF4A90E2).withOpacity(0.3),
-                          blurRadius: 10,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: const Center(
-                      child: Text(
-                        '🏍️',
-                        style: TextStyle(fontSize: 40),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  
-                  // User Name and Status
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        userName,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF2C3E50),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isOnline ? const Color(0xFF2ECC71) : const Color(0xFF95A5A6),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          isOnline ? 'Online' : 'Offline',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 10),
-                  
-                  // User Info
-                  Text(
-                    userEmail,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: Color(0xFF7F8C8D),
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    userPhone,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: Color(0xFF7F8C8D),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+  void initState() {
+    super.initState();
+    _loadProfileData();
+    _initNotifications();
+    _tabController = TabController(length: 3, vsync: this);
+  }
 
-            const SizedBox(height: 20),
+  Future<void> _initNotifications() async {
+    const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
+    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+  }
 
-            // Stats Section
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildStatCard(
-                      icon: '🚗',
-                      number: totalTrips.toString(),
-                      label: 'Total Trips',
-                    ),
-                  ),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: _buildStatCard(
-                      icon: '⚡',
-                      number: '$responseRate%',
-                      label: 'Response Rate',
-                    ),
-                  ),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: _buildStatCard(
-                      icon: '⭐',
-                      number: rating.toString(),
-                      label: 'Rating',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
-            // Settings Section
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  _buildSettingItem(
-                    icon: Icons.notifications,
-                    title: 'Notifications',
-                    subtitle: 'Manage your alerts',
-                    onTap: () => _manageNotifications(),
-                  ),
-                  _buildDivider(),
-                  _buildSettingItem(
-                    icon: Icons.location_on,
-                    title: 'Location Services',
-                    subtitle: 'GPS and tracking settings',
-                    onTap: () => _manageLocation(),
-                  ),
-                  _buildDivider(),
-                  _buildSettingItem(
-                    icon: Icons.security,
-                    title: 'Privacy & Security',
-                    subtitle: 'Account security settings',
-                    onTap: () => _managePrivacy(),
-                  ),
-                  _buildDivider(),
-                  _buildSettingItem(
-                    icon: Icons.help,
-                    title: 'Help & Support',
-                    subtitle: 'Get help and contact us',
-                    onTap: () => _showHelp(),
-                  ),
-                  _buildDivider(),
-                  _buildSettingItem(
-                    icon: Icons.info,
-                    title: 'About ResQnet',
-                    subtitle: 'App version and information',
-                    onTap: () => _showAbout(),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
-            // Logout Button
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _logout,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFE74C3C),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.logout, color: Colors.white, size: 20),
-                    SizedBox(width: 10),
-                    Text(
-                      'Logout',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 30),
-          ],
-        ),
-      ),
+  Future<void> _showTestNotification() async {
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'profile_channel',
+      'Profile Notifications',
+      channelDescription: 'Profile notification channel',
+      importance: Importance.max,
+      priority: Priority.high,
+      showWhen: false,
+    );
+    const NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
+    await flutterLocalNotificationsPlugin.show(
+      0,
+      'Test Notification',
+      'Notifications are enabled!',
+      platformDetails,
     );
   }
 
-  Widget _buildStatCard({
-    required String icon,
-    required String number,
-    required String label,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Text(icon, style: const TextStyle(fontSize: 24)),
-          const SizedBox(height: 8),
-          Text(
-            number,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF4A90E2),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Color(0xFF7F8C8D),
-              fontWeight: FontWeight.w500,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
+  Future<void> _toggleNotifications() async {
+    setState(() {
+      notificationsEnabled = !notificationsEnabled;
+    });
+    if (notificationsEnabled) await _showTestNotification();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('notificationsEnabled', notificationsEnabled);
   }
 
-  Widget _buildSettingItem({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF4A90E2).withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, color: const Color(0xFF4A90E2), size: 20),
-      ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF2C3E50),
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(
-          fontSize: 14,
-          color: Color(0xFF7F8C8D),
-        ),
-      ),
-      trailing: const Icon(
-        Icons.arrow_forward_ios,
-        color: Color(0xFF7F8C8D),
-        size: 16,
-      ),
-      onTap: onTap,
-    );
+  Future<void> _toggleLocation() async {
+    if (!locationEnabled) {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        await Geolocator.openLocationSettings();
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permission denied'), backgroundColor: Colors.red),
+          );
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location permanently denied'), backgroundColor: Colors.red),
+        );
+        return;
+      }
+      Position pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      setState(() {
+        locationEnabled = true;
+        currentLocation = '${pos.latitude}, ${pos.longitude}';
+      });
+    } else {
+      setState(() {
+        locationEnabled = false;
+        currentLocation = '';
+      });
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('locationEnabled', locationEnabled);
+    await prefs.setString('currentLocation', currentLocation);
   }
 
-  Widget _buildDivider() {
-    return const Divider(
-      height: 1,
-      color: Color(0xFFE8E8E8),
-      indent: 60,
-      endIndent: 20,
-    );
+  Future<void> _loadProfileData() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userName = prefs.getString('userName') ?? userName;
+      userEmail = prefs.getString('userEmail') ?? userEmail;
+      userPhone = prefs.getString('userPhone') ?? userPhone;
+      userLocation = prefs.getString('userLocation') ?? userLocation;
+      notificationsEnabled = prefs.getBool('notificationsEnabled') ?? false;
+      locationEnabled = prefs.getBool('locationEnabled') ?? false;
+      currentLocation = prefs.getString('currentLocation') ?? '';
+    });
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked != null) {
+      setState(() => _profileImage = File(picked.path));
+    }
   }
 
   void _editProfile() {
-    // TODO: Implement edit profile functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Edit profile functionality coming soon!'),
-        backgroundColor: Color(0xFF4A90E2),
-      ),
-    );
-  }
-
-  void _manageNotifications() {
-    // TODO: Implement notifications settings
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Notifications settings coming soon!'),
-        backgroundColor: Color(0xFF4A90E2),
-      ),
-    );
-  }
-
-  void _manageLocation() {
-    // TODO: Implement location settings
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Location settings coming soon!'),
-        backgroundColor: Color(0xFF4A90E2),
-      ),
-    );
-  }
-
-  void _managePrivacy() {
-    // TODO: Implement privacy settings
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Privacy settings coming soon!'),
-        backgroundColor: Color(0xFF4A90E2),
-      ),
-    );
-  }
-
-  void _showHelp() {
-    // TODO: Implement help and support
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Help and support coming soon!'),
-        backgroundColor: Color(0xFF4A90E2),
+    final nameCtrl = TextEditingController(text: userName);
+    final emailCtrl = TextEditingController(text: userEmail);
+    final phoneCtrl = TextEditingController(text: userPhone);
+    final locationCtrl = TextEditingController(text: userLocation);
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Edit Profile'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
+            TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: 'Email')),
+            TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Phone')),
+            TextField(controller: locationCtrl, decoration: const InputDecoration(labelText: 'Location')),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                userName = nameCtrl.text;
+                userEmail = emailCtrl.text;
+                userPhone = phoneCtrl.text;
+                userLocation = locationCtrl.text;
+              });
+              Navigator.pop(context);
+            },
+            child: const Text('Save'),
+          ),
+        ],
       ),
     );
   }
@@ -425,58 +176,180 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _showAbout() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (_) => AlertDialog(
         title: const Text('About ResQnet'),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Version: 1.0.0'),
-            SizedBox(height: 8),
-            Text('Build: 2024.1.1'),
-            SizedBox(height: 8),
-            Text('Stay Protected, Stay Connected'),
-            SizedBox(height: 16),
-            Text('© 2024 ResQnet. All rights reserved.'),
+        content: const Text('Version 1.0.0\n© 2025 ResQnet. All rights reserved.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      ),
+    );
+  }
+
+  void _showHelp() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Help & Support'),
+        content: const Text('• How to update profile: Tap the edit button.\n• For support email: support@resqnet.com'),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      ),
+    );
+  }
+
+  Widget _infoCard(String title, String value) => Column(
+        children: [
+          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(title, style: const TextStyle(color: Colors.grey)),
+        ],
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        systemOverlayStyle: SystemUiOverlayStyle.dark,
+        
+        
+          titleSpacing: 0,
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Center(
+                child: RichText(
+                  text: TextSpan(
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'Arial'),
+                    children: [
+                      TextSpan(
+                        text: 'Res',
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                      TextSpan(
+                        text: 'Q',
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                      TextSpan(
+                        text: 'net',
+                        style: TextStyle(color: Color(0xFF1976D2)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: Theme.of(context).colorScheme.primary,
+          unselectedLabelColor: Colors.grey,
+          tabs: const [
+            Tab(icon: Icon(Icons.bar_chart), text: 'Stats'),
+            Tab(icon: Icon(Icons.settings), text: 'Settings'),
+            Tab(icon: Icon(Icons.more_horiz), text: 'Actions'),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildStatsTab(),
+          _buildSettingsTab(),
+          _buildActionsTab(),
         ],
       ),
     );
   }
 
-  void _logout() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-                (route) => false,
-              );
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFFE74C3C),
+  Widget _buildStatsTab() => SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            GestureDetector(
+              onTap: _pickImage,
+              child: CircleAvatar(
+                radius: 50,
+                backgroundColor: const Color(0xFF4A90E2),
+                backgroundImage: _profileImage != null ? FileImage(_profileImage!) : null,
+                child: _profileImage == null ? const Icon(Icons.person, color: Colors.white, size: 40) : null,
+              ),
             ),
-            child: const Text('Logout'),
+            const SizedBox(height: 12),
+            Text(userName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            Text(userEmail, style: const TextStyle(color: Colors.grey)),
+            Text(userPhone, style: const TextStyle(color: Colors.grey)),
+            Text(userLocation, style: const TextStyle(color: Colors.grey)),
+            const SizedBox(height: 16),
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _infoCard('Total Trips', '$totalTrips'),
+                    _infoCard('Response', '$responseRate%'),
+                    _infoCard('Rating', '$rating'),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _buildSettingsTab() => ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          SwitchListTile(
+            title: const Text('Enable Notifications'),
+            value: notificationsEnabled,
+            onChanged: (_) => _toggleNotifications(),
+          ),
+          SwitchListTile(
+            title: const Text('Enable Location'),
+            value: locationEnabled,
+            onChanged: (_) => _toggleLocation(),
+          ),
+          SwitchListTile(
+            title: const Text('Dark Mode'),
+            subtitle: Text(widget.isDarkTheme ? 'Dark mode is ON' : 'Dark mode is OFF'),
+            value: widget.isDarkTheme,
+            onChanged: (val) => widget.toggleTheme(val),
+          ),
+          if (currentLocation.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text('Location: $currentLocation', style: const TextStyle(color: Colors.blueGrey)),
+            ),
+        ],
+      );
+
+  Widget _buildActionsTab() => ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          ListTile(
+            leading: const Icon(Icons.edit),
+            title: const Text('Edit Profile'),
+            onTap: _editProfile,
+          ),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('About ResQnet'),
+            onTap: _showAbout,
+          ),
+          ListTile(
+            leading: const Icon(Icons.help_outline),
+            title: const Text('Help & Support'),
+            onTap: _showHelp,
+          ),
+          ListTile(
+            leading: const Icon(Icons.logout, color: Color(0xFFE74C3C)),
+            title: const Text('Logout'),
+            onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme))),
           ),
         ],
-      ),
-    );
-  }
+      );
 }

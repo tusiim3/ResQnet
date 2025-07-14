@@ -4,7 +4,9 @@ import 'package:resqnet/screens/home_screen.dart';
 
 //Sign Up Screen
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+  const RegisterScreen({super.key, required this.toggleTheme, required this.isDarkTheme});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -34,18 +36,67 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2C3E50)),
-          onPressed: () => Navigator.pop(context),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(110),
+        child: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          systemOverlayStyle: SystemUiOverlayStyle.dark,
+          automaticallyImplyLeading: false,
+          titleSpacing: 0,
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Center(
+                child: RichText(
+                  text: TextSpan(
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'Arial'),
+                    children: [
+                      TextSpan(
+                        text: 'Res',
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                      TextSpan(
+                        text: 'Q',
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                      TextSpan(
+                        text: 'net',
+                        style: TextStyle(color: Color(0xFF1976D2)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(40),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 10, left: 16, right: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Color(0xFF2C3E50)),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  const Spacer(),
+                  const Text(
+                    'Register',
+                    style: TextStyle(
+                      color: Color(0xFF2C3E50),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 20,
+                      
+                    ),
+                  ),
+                ],
+              
+            ),
+          ),
         ),
-        centerTitle: true,
-        title: const Text(
-          'ResQnet Sign Up',
-          style: TextStyle(color: Color(0xFF2C3E50)),
         ),
       ),
       body: SafeArea(
@@ -634,7 +685,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => HomeScreen(),
+                      builder: (context) => HomeScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
                     ),
                   );
                 },
