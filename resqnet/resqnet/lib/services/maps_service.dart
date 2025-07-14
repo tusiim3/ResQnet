@@ -61,22 +61,22 @@ class MapsService {
     return null;
   }
 
-  // Calculate route between two points
-  static Future<Map<String, dynamic>?> getRoute(
+  // Calculate fastest route to emergency location)
+  static Future<Map<String, dynamic>?> getEmergencyRoute(
       double startLat,
       double startLng,
-      double endLat,
-      double endLng, {
-        String mode = 'driving', // driving, walking, bicycling, transit
-      }) async {
+      double emergencyLat,
+      double emergencyLng,
+      ) async {
     if (!ApiConfig.isConfigured) {
       print('Warning: Google Maps API key not configured');
       return null;
     }
 
     final origin = '$startLat,$startLng';
-    final destination = '$endLat,$endLng';
-    final url = 'https://maps.googleapis.com/maps/api/directions/json?origin=$origin&destination=$destination&mode=$mode&key=${ApiConfig.mapsApiKey}';
+    final destination = '$emergencyLat,$emergencyLng';
+
+    final url = 'https://maps.googleapis.com/maps/api/directions/json?origin=$origin&destination=$destination&mode=driving&key=${ApiConfig.mapsApiKey}';
 
     try {
       final response = await http.get(Uri.parse(url));
@@ -92,31 +92,46 @@ class MapsService {
             'duration': leg['duration']['text'],
             'distanceValue': leg['distance']['value'], // in meters
             'durationValue': leg['duration']['value'], // in seconds
-            'polyline': route['overview_polyline']['points'],
-            'steps': leg['steps'],
           };
         }
       }
     } catch (e) {
-      print('Error getting route: $e');
+      print('Error getting emergency route: $e');
     }
 
     return null;
   }
 
-  // Find nearby places (hospitals, police stations, etc.)
-  static Future<List<Map<String, dynamic>>> findNearbyPlaces(
+  // Find nearby emergency services
+  static Future<List<Map<String, dynamic>>> findNearbyEmergencyServices(
       double latitude,
-      double longitude,
-      String placeType, {
-        int radius = 5000, // 5km default
+      double longitude, {
+        int radius = 10000,
+        List<String> serviceTypes = const ['hospital', 'police'],
       }) async {
     if (!ApiConfig.isConfigured) {
       print('Warning: Google Maps API key not configured');
       return [];
     }
 
-    final url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=$latitude,$longitude&radius=$radius&type=$placeType&key=${ApiConfig.mapsApiKey}';
+    List<Map<String, dynamic>> emergencyServices = [];
+
+    for (String serviceType in serviceTypes) {
+      final services = await _findServiceType(latitude, longitude, serviceType, radius);
+      emergencyServices.addAll(services);
+    }
+
+    return emergencyServices;
+  }
+
+  // Helper method to find specific service type
+  static Future<List<Map<String, dynamic>>> _findServiceType(
+      double latitude,
+      double longitude,
+      String serviceType,
+      int radius,
+      ) async {
+    final url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=$latitude,$longitude&radius=$radius&type=$serviceType&key=${ApiConfig.mapsApiKey}';
 
     try {
       final response = await http.get(Uri.parse(url));
@@ -130,13 +145,13 @@ class MapsService {
             'latitude': place['geometry']['location']['lat'],
             'longitude': place['geometry']['location']['lng'],
             'rating': place['rating'],
+            'serviceType': serviceType,
             'placeId': place['place_id'],
-            'types': place['types'],
           }).toList();
         }
       }
     } catch (e) {
-      print('Error finding nearby places: $e');
+      print('Error finding $serviceType: $e');
     }
 
     return [];
