@@ -14,6 +14,7 @@ class LocationService {
     String? address,
     double? speed,
     double? heading,
+    Map<String, dynamic>? safetyData,
   }) async {
     final userId = _auth.currentUser?.uid;
     if (userId == null) return;
@@ -26,11 +27,13 @@ class LocationService {
       'address': address,
       'speed': speed,
       'heading': heading,
+      'safetyData': safetyData,
       'timestamp': FieldValue.serverTimestamp(),
       'isActive': true,
+      'isEmergency': false,
     });
 
-    // Also update user's current location
+    // update user's current location
     await _db.collection('users').doc(userId).update({
       'currentLocation': {
         'latitude': latitude,
@@ -49,10 +52,10 @@ class LocationService {
     return null;
   }
 
-  // Get location history for a user
+  // Get location history for emergency tracking
   Stream<QuerySnapshot> getLocationHistory(String userId, {int limit = 100}) {
     return _db
-        .collection('locations')
+        .collection('emergency_locations')
         .where('userId', isEqualTo: userId)
         .orderBy('timestamp', descending: true)
         .limit(limit)
@@ -66,6 +69,7 @@ class LocationService {
     required String helmetId,
     required String alertType,
     String? additionalInfo,
+    Map<String, dynamic>? crashData,
   }) async {
     final userId = _auth.currentUser?.uid;
     if (userId == null) return;
@@ -75,9 +79,11 @@ class LocationService {
       'helmetId': helmetId,
       'latitude': latitude,
       'longitude': longitude,
-      'alertType': alertType, // 'crash', 'panic', 'low_battery', etc.
+      'alertType': alertType, // i was thinking that we have diff alerts; crash, panic, low_battery, etc.
       'additionalInfo': additionalInfo,
+      'crashData': crashData,
       'timestamp': FieldValue.serverTimestamp(),
+      'isEmergency': true,
       'isResolved': false,
       'responseTime': null,
     });
@@ -100,13 +106,13 @@ class LocationService {
     });
   }
 
-  // Get nearby riders (for community features)
+  // Get nearby riders
   Future<List<Map<String, dynamic>>> getNearbyRiders({
     required double latitude,
     required double longitude,
     double radiusKm = 5.0,
   }) async {
-    // Guys we'll have to use GeoFirestore for better calculations. I've left these simplified ones as place holders
+    // Guys we might have to use GeoFirestore for better calculations. I've left these simplified ones as place holders
     final snapshot = await _db
         .collection('users')
         .where('currentLocation', isNotEqualTo: null)
