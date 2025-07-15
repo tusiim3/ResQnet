@@ -131,6 +131,64 @@ class MyApp extends StatelessWidget {
 
 ================================================================================
 
+------lib\config\api_config.dart
+class ApiConfig {
+  // Google Maps API Key
+  static const String googleMapsApiKey = 'AIzaSyCGYjT7qcHOVr8NXJ0Y_d0dRRICLkMnan0';
+
+  // i had added Firebase Configuration but later realises Okure already handled it in firebase_options.dart. Mann😂😭
+
+  // in case we need these endpoints too
+  static const String emergencyServicesApi = 'https://api.emergency-services.com';
+  static const String geocodingApi = 'https://maps.googleapis.com/maps/api/geocode/json';
+
+  // API Configuration for different environments
+  static const bool isProduction = bool.fromEnvironment('dart.vm.product');
+
+  static String get mapsApiKey {
+    return googleMapsApiKey;
+  }
+
+  static bool get isConfigured {
+    return googleMapsApiKey != 'AIzaSyCGYjT7qcHOVr8NXJ0Y_d0dRRICLkMnan0' &&
+        googleMapsApiKey.isNotEmpty;
+  }
+}
+
+class EnvironmentConfig {
+  static const String development = 'development';
+  static const String production = 'production';
+
+  static String get currentEnvironment {
+    return isProduction ? production : development;
+  }
+
+  static bool get isProduction {
+    return bool.fromEnvironment('dart.vm.product');
+  }
+
+  // Different configurations for different environments
+  static Map<String, dynamic> get config {
+    if (isProduction) {
+      return {
+        'apiTimeout': 30000,
+        'locationUpdateInterval': 5000,
+        'emergencyTimeout': 10000,
+        'maxRetries': 3,
+      };
+    } else {
+      return {
+        'apiTimeout': 10000,
+        'locationUpdateInterval': 2000,
+        'emergencyTimeout': 5000,
+        'maxRetries': 1,
+      };
+    }
+  }
+}
+
+================================================================================
+
 ------lib\controllers\sms_controller.dart
 import 'package:telephony/telephony.dart';
 import '../services/sms_service.dart';
@@ -2517,6 +2575,354 @@ class AuthService {
 
   // Get current user
   User? get currentUser => _auth.currentUser;
+}
+
+================================================================================
+
+------lib\services\location_service.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:math';
+
+class LocationService {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Save real-time location from helmet
+  Future<void> saveLocation({
+    required double latitude,
+    required double longitude,
+    required String helmetId,
+    String? address,
+    double? speed,
+    double? heading,
+    Map<String, dynamic>? safetyData,
+  }) async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return;
+
+    await _db.collection('locations').add({
+      'userId': userId,
+      'helmetId': helmetId,
+      'latitude': latitude,
+      'longitude': longitude,
+      'address': address,
+      'speed': speed,
+      'heading': heading,
+      'safetyData': safetyData,
+      'timestamp': FieldValue.serverTimestamp(),
+      'isActive': true,
+      'isEmergency': false,
+    });
+
+    // update user's current location
+    await _db.collection('users').doc(userId).update({
+      'currentLocation': {
+        'latitude': latitude,
+        'longitude': longitude,
+        'timestamp': FieldValue.serverTimestamp(),
+      }
+    });
+  }
+
+  // Get user's current location
+  Future<Map<String, dynamic>?> getCurrentLocation(String userId) async {
+    final doc = await _db.collection('users').doc(userId).get();
+    if (doc.exists && doc.data()?['currentLocation'] != null) {
+      return doc.data()?['currentLocation'] as Map<String, dynamic>;
+    }
+    return null;
+  }
+
+  // Get location history for emergency tracking
+  Stream<QuerySnapshot> getLocationHistory(String userId, {int limit = 100}) {
+    return _db
+        .collection('emergency_locations')
+        .where('userId', isEqualTo: userId)
+        .orderBy('timestamp', descending: true)
+        .limit(limit)
+        .snapshots();
+  }
+
+  // Save emergency location when crash is detected
+  Future<void> saveEmergencyLocation({
+    required double latitude,
+    required double longitude,
+    required String helmetId,
+    required String alertType,
+    String? additionalInfo,
+    Map<String, dynamic>? crashData,
+  }) async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return;
+
+    await _db.collection('emergency_locations').add({
+      'userId': userId,
+      'helmetId': helmetId,
+      'latitude': latitude,
+      'longitude': longitude,
+      'alertType': alertType, // i was thinking that we have diff alerts; crash, panic, low_battery, etc.
+      'additionalInfo': additionalInfo,
+      'crashData': crashData,
+      'timestamp': FieldValue.serverTimestamp(),
+      'isEmergency': true,
+      'isResolved': false,
+      'responseTime': null,
+    });
+  }
+
+  // Get emergency locations for monitoring dashboard
+  Stream<QuerySnapshot> getEmergencyLocations() {
+    return _db
+        .collection('emergency_locations')
+        .where('isResolved', isEqualTo: false)
+        .orderBy('timestamp', descending: true)
+        .snapshots();
+  }
+
+  // Mark emergency as resolved
+  Future<void> resolveEmergency(String emergencyId) async {
+    await _db.collection('emergency_locations').doc(emergencyId).update({
+      'isResolved': true,
+      'resolvedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // Get nearby riders
+  Future<List<Map<String, dynamic>>> getNearbyRiders({
+    required double latitude,
+    required double longitude,
+    double radiusKm = 5.0,
+  }) async {
+    // Guys we might have to use GeoFirestore for better calculations. I've left these simplified ones as place holders
+    final snapshot = await _db
+        .collection('users')
+        .where('currentLocation', isNotEqualTo: null)
+        .get();
+
+    List<Map<String, dynamic>> nearbyRiders = [];
+
+    for (var doc in snapshot.docs) {
+      final data = doc.data();
+      final currentLocation = data['currentLocation'] as Map<String, dynamic>?;
+
+      if (currentLocation != null) {
+        final riderLat = currentLocation['latitude'] as double;
+        final riderLng = currentLocation['longitude'] as double;
+
+        // Calculate distance
+        final distance = _calculateDistance(latitude, longitude, riderLat, riderLng);
+
+        if (distance <= radiusKm) {
+          nearbyRiders.add({
+            'userId': doc.id,
+            'username': data['username'] ?? 'Unknown',
+            'latitude': riderLat,
+            'longitude': riderLng,
+            'distance': distance,
+          });
+        }
+      }
+    }
+
+    return nearbyRiders;
+  }
+
+  double _calculateDistance(double lat1, double lng1, double lat2, double lng2) {
+    const double earthRadius = 6371; // km
+    final double dLat = _toRadians(lat2 - lat1);
+    final double dLng = _toRadians(lng2 - lng1);
+
+    final double a =
+        sin(dLat / 2) * sin(dLat / 2) +
+            cos(_toRadians(lat1)) * cos(_toRadians(lat2)) *
+                sin(dLng / 2) * sin(dLng / 2);
+
+    final double c = 2 * asin(sqrt(a));
+    return earthRadius * c;
+  }
+
+  double _toRadians(double degrees) {
+    return degrees * (pi / 180);
+  }
+}
+
+================================================================================
+
+------lib\services\maps_service.dart
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
+
+class MapsService {
+
+  // Get address from coordinates
+  static Future<String?> getAddressFromCoordinates(
+      double latitude,
+      double longitude
+      ) async {
+    if (!ApiConfig.isConfigured) {
+      print('Warning: Google Maps API key not configured');
+      return null;
+    }
+
+    final url = '${ApiConfig.geocodingApi}?latlng=$latitude,$longitude&key=${ApiConfig.mapsApiKey}';
+
+    try {
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['results'] != null && data['results'].isNotEmpty) {
+          return data['results'][0]['formatted_address'];
+        }
+      }
+    } catch (e) {
+      print('Error getting address: $e');
+    }
+
+    return null;
+  }
+
+  // Get coordinates from address
+  static Future<Map<String, double>?> getCoordinatesFromAddress(String address) async {
+    if (!ApiConfig.isConfigured) {
+      print('Warning: Google Maps API key not configured');
+      return null;
+    }
+
+    final url = '${ApiConfig.geocodingApi}?address=${Uri.encodeComponent(address)}&key=${ApiConfig.mapsApiKey}';
+
+    try {
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['results'] != null && data['results'].isNotEmpty) {
+          final location = data['results'][0]['geometry']['location'];
+          return {
+            'latitude': location['lat'].toDouble(),
+            'longitude': location['lng'].toDouble(),
+          };
+        }
+      }
+    } catch (e) {
+      print('Error getting coordinates: $e');
+    }
+
+    return null;
+  }
+
+  // Calculate fastest route to emergency location)
+  static Future<Map<String, dynamic>?> getEmergencyRoute(
+      double startLat,
+      double startLng,
+      double emergencyLat,
+      double emergencyLng,
+      ) async {
+    if (!ApiConfig.isConfigured) {
+      print('Warning: Google Maps API key not configured');
+      return null;
+    }
+
+    final origin = '$startLat,$startLng';
+    final destination = '$emergencyLat,$emergencyLng';
+
+    final url = 'https://maps.googleapis.com/maps/api/directions/json?origin=$origin&destination=$destination&mode=driving&key=${ApiConfig.mapsApiKey}';
+
+    try {
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['routes'] != null && data['routes'].isNotEmpty) {
+          final route = data['routes'][0];
+          final leg = route['legs'][0];
+
+          return {
+            'distance': leg['distance']['text'],
+            'duration': leg['duration']['text'],
+            'distanceValue': leg['distance']['value'], // in meters
+            'durationValue': leg['duration']['value'], // in seconds
+          };
+        }
+      }
+    } catch (e) {
+      print('Error getting emergency route: $e');
+    }
+
+    return null;
+  }
+
+  // Find nearby emergency services
+  static Future<List<Map<String, dynamic>>> findNearbyEmergencyServices(
+      double latitude,
+      double longitude, {
+        int radius = 10000,
+        List<String> serviceTypes = const ['hospital', 'police'],
+      }) async {
+    if (!ApiConfig.isConfigured) {
+      print('Warning: Google Maps API key not configured');
+      return [];
+    }
+
+    List<Map<String, dynamic>> emergencyServices = [];
+
+    for (String serviceType in serviceTypes) {
+      final services = await _findServiceType(latitude, longitude, serviceType, radius);
+      emergencyServices.addAll(services);
+    }
+
+    return emergencyServices;
+  }
+
+  // Helper method to find specific service type
+  static Future<List<Map<String, dynamic>>> _findServiceType(
+      double latitude,
+      double longitude,
+      String serviceType,
+      int radius,
+      ) async {
+    final url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=$latitude,$longitude&radius=$radius&type=$serviceType&key=${ApiConfig.mapsApiKey}';
+
+    try {
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['results'] != null) {
+          return (data['results'] as List).map((place) => {
+            'name': place['name'],
+            'vicinity': place['vicinity'],
+            'latitude': place['geometry']['location']['lat'],
+            'longitude': place['geometry']['location']['lng'],
+            'rating': place['rating'],
+            'serviceType': serviceType,
+            'placeId': place['place_id'],
+          }).toList();
+        }
+      }
+    } catch (e) {
+      print('Error finding $serviceType: $e');
+    }
+
+    return [];
+  }
+
+  // Validate API key
+  static Future<bool> validateApiKey() async {
+    if (!ApiConfig.isConfigured) return false;
+
+    try {
+      final response = await http.get(
+          Uri.parse('https://maps.googleapis.com/maps/api/geocode/json?address=test&key=${ApiConfig.mapsApiKey}')
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
 }
 
 ================================================================================
