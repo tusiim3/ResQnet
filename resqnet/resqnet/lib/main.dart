@@ -8,6 +8,9 @@ Future <void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
+  final prefs = await SharedPreferences.getInstance();
+  final isDark = prefs.getBool('isDarkTheme') ?? false;
+
   runApp(MyApp(isDarkTheme: isDark));
 }
 

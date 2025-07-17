@@ -381,73 +381,73 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Actual register logic
-  Future<void> _handleRegister() async {
-    final fullName = _nameController.text.trim();
-    final username = _usernameController.text.trim();
-    final email = _emailController.text.trim();
-    final phone = _phoneController.text.trim();
-    final password = _passwordController.text.trim();
+  // // Actual register logic
+  // Future<void> _handleRegister() async {
+  //   final fullName = _nameController.text.trim();
+  //   final username = _usernameController.text.trim();
+  //   final email = _emailController.text.trim();
+  //   final phone = _phoneController.text.trim();
+  //   final password = _passwordController.text.trim();
 
-    // Show loading
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Account Created'),
-            content: const Text('Your account has been successfully created!'),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => HomeScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
-                    ),
-                  );
-                },
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: controller,
-          keyboardType: keyboardType,
-          obscureText: obscureText,
-          decoration: InputDecoration(
-            hintText: hint,
-            suffixIcon: suffixIcon,
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFFE8E8E8), width: 2),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFFE8E8E8), width: 2),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFF4A90E2), width: 2),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Colors.red, width: 2),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Colors.red, width: 2),
-            ),
-            contentPadding: const EdgeInsets.all(15),
-          ),
-          validator: validator,
-        ),
-      ],
-    );
-  }
+  //   // Show loading
+  //   showDialog(
+  //     context: context,
+  //     builder:
+  //         (context) => AlertDialog(
+  //           title: const Text('Account Created'),
+  //           content: const Text('Your account has been successfully created!'),
+  //           actions: [
+  //             TextButton(
+  //               onPressed: () {
+  //                 Navigator.push(
+  //                   context,
+  //                   MaterialPageRoute(
+  //                     builder: (context) => HomeScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
+  //                   ),
+  //                 );
+  //               },
+  //               child: const Text('OK'),
+  //             ),
+  //           ],
+  //         ),
+  //       ),
+  //       const SizedBox(height: 8),
+  //       TextFormField(
+  //         controller: controller,
+  //         keyboardType: keyboardType,
+  //         obscureText: obscureText,
+  //         decoration: InputDecoration(
+  //           hintText: hint,
+  //           suffixIcon: suffixIcon,
+  //           filled: true,
+  //           fillColor: Colors.white,
+  //           border: OutlineInputBorder(
+  //             borderRadius: BorderRadius.circular(10),
+  //             borderSide: const BorderSide(color: Color(0xFFE8E8E8), width: 2),
+  //           ),
+  //           enabledBorder: OutlineInputBorder(
+  //             borderRadius: BorderRadius.circular(10),
+  //             borderSide: const BorderSide(color: Color(0xFFE8E8E8), width: 2),
+  //           ),
+  //           focusedBorder: OutlineInputBorder(
+  //             borderRadius: BorderRadius.circular(10),
+  //             borderSide: const BorderSide(color: Color(0xFF4A90E2), width: 2),
+  //           ),
+  //           errorBorder: OutlineInputBorder(
+  //             borderRadius: BorderRadius.circular(10),
+  //             borderSide: const BorderSide(color: Colors.red, width: 2),
+  //           ),
+  //           focusedErrorBorder: OutlineInputBorder(
+  //             borderRadius: BorderRadius.circular(10),
+  //             borderSide: const BorderSide(color: Colors.red, width: 2),
+  //           ),
+  //           contentPadding: const EdgeInsets.all(15),
+  //         ),
+  //         validator: validator,
+  //       ),
+  //     ],
+  //   );
+  // }
 
   // Actual register logic
   Future<void> _handleRegister() async {
@@ -472,14 +472,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
         phone: phone,
         password: password,
       );
+      if (!mounted) return;
       Navigator.of(context).pop(); // remove loading
 
       // Navigate to home
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(
+            toggleTheme: widget.toggleTheme,
+            isDarkTheme: widget.isDarkTheme,
+          ),
+        ),
       );
     } catch (e) {
+      if (!mounted) return;
       Navigator.of(context).pop(); // remove loading
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Registration failed: $e')),

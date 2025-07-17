@@ -4,11 +4,14 @@ import 'package:resqnet/screens/register_screen.dart';
 import 'package:resqnet/screens/Home_Screen.dart';
 import 'package:resqnet/services/user_service.dart';
 
-
 class LoginScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDarkTheme;
-  const LoginScreen({super.key, required this.toggleTheme, required this.isDarkTheme});
+  const LoginScreen({
+    super.key,
+    required this.toggleTheme,
+    required this.isDarkTheme,
+  });
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -298,7 +301,11 @@ class _LoginScreenState extends State<LoginScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => RegisterScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
+                              builder:
+                                  (context) => RegisterScreen(
+                                    toggleTheme: widget.toggleTheme,
+                                    isDarkTheme: widget.isDarkTheme,
+                                  ),
                             ),
                           );
                         },
@@ -339,10 +346,50 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _handleLogin() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => HomeScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme)),
+  void _handleLogin() async {
+    final phone = _phoneController.text.trim();
+    final password = _passwordController.text.trim();
+
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(child: CircularProgressIndicator()),
     );
+
+    try {
+      final userData = await _userService.getUserByPhone(phone);
+      Navigator.of(context).pop(); // Remove loading indicator
+
+      if (userData == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No user found with this phone number.')),
+        );
+        return;
+      }
+
+      if (userData['password'] == password) {
+        // In production, use hashed passwords!
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder:
+                (context) => HomeScreen(
+                  toggleTheme: widget.toggleTheme,
+                  isDarkTheme: widget.isDarkTheme,
+                ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Incorrect password.')));
+      }
+    } catch (e) {
+      Navigator.of(context).pop(); // Remove loading indicator
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Login failed: $e')));
+    }
   }
 }
