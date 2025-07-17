@@ -41,46 +41,49 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDFlfdwMPBn6zq893oQCVdaB-vxA2s_umk',
-    appId: '1:717238350591:web:8d791b6a4429e2257292ca',
-    messagingSenderId: '717238350591',
-    projectId: 'resqnet-25',
-    authDomain: 'resqnet-25.firebaseapp.com',
-    storageBucket: 'resqnet-25.firebasestorage.app',
+    apiKey: 'AIzaSyB64LDcI7YG2ArTjXsXDWHlp00BcBOzUeE',
+    appId: '1:341222348718:web:1caa58b341648c15a99a3f',
+    messagingSenderId: '341222348718',
+    projectId: 'smartbodahelmet',
+    authDomain: 'smartbodahelmet.firebaseapp.com',
+    storageBucket: 'smartbodahelmet.firebasestorage.app',
+    measurementId: 'G-R0TJEQZH4J',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyAIb5jpA473QRPdp19Un2OvM5amxsK-b50',
-    appId: '1:717238350591:android:ef2b7f9151c920707292ca',
-    messagingSenderId: '717238350591',
-    projectId: 'resqnet-25',
-    storageBucket: 'resqnet-25.firebasestorage.app',
+    apiKey: 'AIzaSyDpqckP9SVY0RE93yiIzvY4e1-_t1-zY24',
+    appId: '1:341222348718:android:624a84f071548cc8a99a3f',
+    messagingSenderId: '341222348718',
+    projectId: 'smartbodahelmet',
+    storageBucket: 'smartbodahelmet.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyD71oFUH1Mksy5GUd02mm1pIPb2w7RVGQo',
-    appId: '1:717238350591:ios:d5166d5cd0dad5a47292ca',
-    messagingSenderId: '717238350591',
-    projectId: 'resqnet-25',
-    storageBucket: 'resqnet-25.firebasestorage.app',
+    apiKey: 'AIzaSyD86pAUXVDz4R1ouWtF-PMZMs46XPc4fK8',
+    appId: '1:341222348718:ios:20f96d4dfa3e4d3ca99a3f',
+    messagingSenderId: '341222348718',
+    projectId: 'smartbodahelmet',
+    storageBucket: 'smartbodahelmet.firebasestorage.app',
     iosBundleId: 'com.example.resqnet',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyD71oFUH1Mksy5GUd02mm1pIPb2w7RVGQo',
-    appId: '1:717238350591:ios:d5166d5cd0dad5a47292ca',
-    messagingSenderId: '717238350591',
-    projectId: 'resqnet-25',
-    storageBucket: 'resqnet-25.firebasestorage.app',
+    apiKey: 'AIzaSyD86pAUXVDz4R1ouWtF-PMZMs46XPc4fK8',
+    appId: '1:341222348718:ios:20f96d4dfa3e4d3ca99a3f',
+    messagingSenderId: '341222348718',
+    projectId: 'smartbodahelmet',
+    storageBucket: 'smartbodahelmet.firebasestorage.app',
     iosBundleId: 'com.example.resqnet',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyDFlfdwMPBn6zq893oQCVdaB-vxA2s_umk',
-    appId: '1:717238350591:web:15114f60c5900d6a7292ca',
-    messagingSenderId: '717238350591',
-    projectId: 'resqnet-25',
-    authDomain: 'resqnet-25.firebaseapp.com',
-    storageBucket: 'resqnet-25.firebasestorage.app',
+    apiKey: 'AIzaSyB64LDcI7YG2ArTjXsXDWHlp00BcBOzUeE',
+    appId: '1:341222348718:web:e6bae70328bfef43a99a3f',
+    messagingSenderId: '341222348718',
+    projectId: 'smartbodahelmet',
+    authDomain: 'smartbodahelmet.firebaseapp.com',
+    storageBucket: 'smartbodahelmet.firebasestorage.app',
+    measurementId: 'G-X02W9Y7XZN',
   );
+
 }

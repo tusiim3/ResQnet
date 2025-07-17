@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-// import 'package:resqnet/screens/alert_feed_screen.dart';
+//import 'package:resqnet/screens/alert_feed_screen.dart';
 import 'package:resqnet/screens/register_screen.dart';
-import 'package:resqnet/screens/home_screen.dart';
+import 'package:resqnet/screens/Home_Screen.dart';
+import 'package:resqnet/services/user_service.dart';
+
 
 class LoginScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
@@ -21,6 +22,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _rememberMe = false;
   bool _obscurePassword = true;
+
+  final UserService _userService = UserService();
 
   @override
   void dispose() {
