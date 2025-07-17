@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+  const MapScreen({super.key, required this.toggleTheme, required this.isDarkTheme});
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -13,31 +15,66 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2C3E50)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Map View',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF2C3E50),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(110),
+        child: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          systemOverlayStyle: SystemUiOverlayStyle.dark,
+          automaticallyImplyLeading: false,
+          titleSpacing: 0,
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Center(
+                child: RichText(
+                  text: TextSpan(
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'Arial'),
+                    children: [
+                      TextSpan(
+                        text: 'Res',
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                      TextSpan(
+                        text: 'Q',
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                      TextSpan(
+                        text: 'net',
+                        style: TextStyle(color: Color(0xFF1976D2)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+                
+                ],
+              ),
+          
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(40),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 10, left: 16, right: 16),
+            child: Row(
+              children: [
+                const Text(
+                        'Map View',
+                        style: TextStyle(
+                          color: Color(0xFF2C3E50),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 20,
+                        ),
+                      ),
+                const Spacer(),
+                IconButton(icon: const Icon(Icons.my_location, color: Color(0xFF4A90E2)), onPressed: _centerOnLocation,),
+              ],
+            ),
           ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.my_location, color: Color(0xFF4A90E2)),
-            onPressed: () {
-              _centerOnLocation();
-            },
           ),
-        ],
-      ),
+        ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

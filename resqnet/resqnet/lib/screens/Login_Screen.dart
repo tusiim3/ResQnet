@@ -4,9 +4,14 @@ import 'package:resqnet/screens/register_screen.dart';
 import 'package:resqnet/screens/Home_Screen.dart';
 import 'package:resqnet/services/user_service.dart';
 
-
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+  const LoginScreen({
+    super.key,
+    required this.toggleTheme,
+    required this.isDarkTheme,
+  });
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -293,11 +298,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       //Create Account Link
                       TextButton(
                         onPressed: () {
-                          // Navigate to register screen
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const RegisterScreen(),
+                              builder:
+                                  (context) => RegisterScreen(
+                                    toggleTheme: widget.toggleTheme,
+                                    isDarkTheme: widget.isDarkTheme,
+                                  ),
                             ),
                           );
                         },
@@ -338,7 +346,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
- // The new login logic for phone+password
   void _handleLogin() async {
     final phone = _phoneController.text.trim();
     final password = _passwordController.text.trim();
@@ -361,21 +368,28 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      if (userData['password'] == password) { // In production, use hashed passwords!
+      if (userData['password'] == password) {
+        // In production, use hashed passwords!
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          MaterialPageRoute(
+            builder:
+                (context) => HomeScreen(
+                  toggleTheme: widget.toggleTheme,
+                  isDarkTheme: widget.isDarkTheme,
+                ),
+          ),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Incorrect password.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Incorrect password.')));
       }
     } catch (e) {
       Navigator.of(context).pop(); // Remove loading indicator
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Login failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Login failed: $e')));
     }
   }
 }

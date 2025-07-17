@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:resqnet/screens/map_screen.dart';
 
 class AlertFeedScreen extends StatefulWidget {
-  const AlertFeedScreen({super.key});
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+  const AlertFeedScreen({super.key, required this.toggleTheme, required this.isDarkTheme});
 
   @override
   State<AlertFeedScreen> createState() => _AlertFeedScreenState();
@@ -42,30 +44,74 @@ class _AlertFeedScreenState extends State<AlertFeedScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2C3E50)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Alert Feed',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF2C3E50),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(110),
+        child: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          systemOverlayStyle: SystemUiOverlayStyle.dark,
+          automaticallyImplyLeading: false,
+          titleSpacing: 0,
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Center(
+                child: RichText(
+                  text: TextSpan(
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'Arial'),
+                    children: [
+                      TextSpan(
+                        text: 'Res',
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                      TextSpan(
+                        text: 'Q',
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                      TextSpan(
+                        text: 'net',
+                        style: TextStyle(color: Color(0xFF1976D2)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            ],
+          ),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(40),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 10, left: 16, right: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // IconButton(
+                  //   icon: const Icon(Icons.arrow_back, color: Color(0xFF2C3E50)),
+                  //   onPressed: () => Navigator.pop(context),
+                  // ),
+                  const SizedBox(width: 2),
+                  const Text(
+                    'Alert Feed',
+                    style: TextStyle(
+                      color: Color(0xFF2C3E50),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 20,
+                    ),
+                  ),
+                  Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.refresh, color: Color(0xFF4A90E2)),
+                    onPressed: () {
+                      _refreshAlerts();
+                    },
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Color(0xFF4A90E2)),
-            onPressed: () {
-              _refreshAlerts();
-            },
-          ),
-        ],
       ),
       body: RefreshIndicator(
         onRefresh: _refreshAlerts,
@@ -345,7 +391,7 @@ class _AlertFeedScreenState extends State<AlertFeedScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => const MapScreen(),
+        builder: (context) => MapScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
       ),
     );
   }
