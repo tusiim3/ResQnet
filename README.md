@@ -1,6 +1,6 @@
 # ResQnet
 
-ResQnet is an embedded system designed to improve boda boda rider safety. It combines sensors and microcontrollers to detect helmet usage, monitor rider conditions, and trigger smart alerts. Collected data is sent to a companion mobile app, providing real-time notifications, accident alerts, and analytics for both riders and emergency contacts.
+ResQnet is an embedded system designed to improve motorcycle rider safety by reducing response times in case of emergencies. It combines sensors and microcontrollers to detect helmet usage, monitor rider conditions, and trigger smart alerts. Collected data is sent to a companion mobile app, providing real-time notifications, accident alerts, and analytics for both riders and emergency contacts.
 
 ## Features
 
@@ -50,7 +50,7 @@ Contributions are welcome! Please open issues or pull requests for new features,
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
-## Author
+## Authors
 
 - [Tusiime Mark](https://github.com/tusiim3)
 - [Namuyimbwa Martha](https://github.com/marthakukiriza)
