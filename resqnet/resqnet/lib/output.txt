@@ -92,39 +92,44 @@ class DefaultFirebaseOptions {
 
 ------lib\main.dart
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'screens/Login_Screen.dart';
-
-// Import the SMS service
 import 'services/sms_service.dart';
+import 'screens/login_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
-  //Start listening for SMS
-  SmsService().initSmsListener();
+  // Correct way to call static methods
+  await SmsService.loadTrustedNumberFromFirestore();
+  SmsService.initSmsListener();
 
-  runApp(const MyApp());
+  final prefs = await SharedPreferences.getInstance();
+  final isDark = prefs.getBool('isDarkTheme') ?? false;
+
+  runApp(MyApp(isDarkTheme: isDark));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final bool isDarkTheme;
+  
+  const MyApp({super.key, required this.isDarkTheme});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ResQnet',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
+      home: LoginScreen(
+        toggleTheme: (bool isDark) {},
+        isDarkTheme: isDarkTheme,
       ),
-      home: LoginScreen(),
     );
   }
 }
-
 ================================================================================
 
 ------lib\output.txt
@@ -192,29 +197,34 @@ class EnvironmentConfig {
 ------lib\controllers\sms_controller.dart
 import 'package:telephony/telephony.dart';
 import '../services/sms_service.dart';
-import '../utils/constants.dart';
 
 class SmsController {
+  final Telephony telephony = Telephony.instance;
+
   void handleIncomingSms(SmsMessage message) {
     final sender = message.address ?? "";
     final body = message.body ?? "";
 
-    if (sender == Constants.trustedNumber) {
-      // ✅ Your custom task
-      doCustomTask(body);
+    // Use the static getter from SmsService
+    final String? trustedHardwareContact = SmsService.hardwareContact;
 
-      // ✅ Send reply
-      SmsService().sendSms(sender, "Task completed successfully!");
+    print("Incoming SMS from: $sender, Body: $body");
+    print("Expected trusted hardware contact: $trustedHardwareContact");
+
+    if (trustedHardwareContact != null && sender == trustedHardwareContact) {
+      doCustomTask(body);
+      // Use the static sendSms method
+      SmsService.sendSms(sender, "Task completed successfully!");
+    } else {
+      print("Unauthorized SMS access attempt from: $sender");
     }
   }
 
   void doCustomTask(String body) {
-    // Replace this with your real task
-    print("Received message: $body");
-    print("Doing custom task...");
+    print("Received message for custom task: '$body'");
+    print("Performing custom task logic...");
   }
 }
-
 ================================================================================
 
 ------lib\models\location_model.dart
@@ -238,7 +248,9 @@ import 'package:flutter/services.dart';
 import 'package:resqnet/screens/map_screen.dart';
 
 class AlertFeedScreen extends StatefulWidget {
-  const AlertFeedScreen({super.key});
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+  const AlertFeedScreen({super.key, required this.toggleTheme, required this.isDarkTheme});
 
   @override
   State<AlertFeedScreen> createState() => _AlertFeedScreenState();
@@ -276,30 +288,74 @@ class _AlertFeedScreenState extends State<AlertFeedScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2C3E50)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Alert Feed',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF2C3E50),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(110),
+        child: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          systemOverlayStyle: SystemUiOverlayStyle.dark,
+          automaticallyImplyLeading: false,
+          titleSpacing: 0,
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Center(
+                child: RichText(
+                  text: TextSpan(
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'Arial'),
+                    children: [
+                      TextSpan(
+                        text: 'Res',
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                      TextSpan(
+                        text: 'Q',
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                      TextSpan(
+                        text: 'net',
+                        style: TextStyle(color: Color(0xFF1976D2)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            ],
+          ),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(40),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 10, left: 16, right: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // IconButton(
+                  //   icon: const Icon(Icons.arrow_back, color: Color(0xFF2C3E50)),
+                  //   onPressed: () => Navigator.pop(context),
+                  // ),
+                  const SizedBox(width: 2),
+                  const Text(
+                    'Alert Feed',
+                    style: TextStyle(
+                      color: Color(0xFF2C3E50),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 20,
+                    ),
+                  ),
+                  Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.refresh, color: Color(0xFF4A90E2)),
+                    onPressed: () {
+                      _refreshAlerts();
+                    },
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Color(0xFF4A90E2)),
-            onPressed: () {
-              _refreshAlerts();
-            },
-          ),
-        ],
       ),
       body: RefreshIndicator(
         onRefresh: _refreshAlerts,
@@ -579,7 +635,7 @@ class _AlertFeedScreenState extends State<AlertFeedScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => const MapScreen(),
+        builder: (context) => MapScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
       ),
     );
   }
@@ -632,13 +688,15 @@ enum AlertStatus {
 
 ------lib\screens\home_screen.dart
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:resqnet/screens/map_screen.dart';
 import 'package:resqnet/screens/alert_feed_screen.dart';
 import 'package:resqnet/screens/profile_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+  const HomeScreen({super.key, required this.toggleTheme, required this.isDarkTheme});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -646,16 +704,113 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-  
-  bool isOnline = true;
-  int tripsToday = 24;
-  int totalTrips = 156;
-  String userName = "Baelish 😎!";
-  List<EmergencyContact> emergencyContacts = [
+
+  List<Widget> get _screens => [
+    _HomeTab(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
+    MapScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
+    AlertFeedScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
+    ProfileScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+
+      body: _screens[_currentIndex],
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildBottomNavItem(
+              icon: Icons.home,
+              label: 'Home',
+              isActive: _currentIndex == 0,
+              onTap: () => setState(() => _currentIndex = 0),
+            ),
+            _buildBottomNavItem(
+              icon: Icons.map,
+              label: 'Map',
+              isActive: _currentIndex == 1,
+              onTap: () => setState(() => _currentIndex = 1),
+            ),
+            _buildBottomNavItem(
+              icon: Icons.notifications,
+              label: 'Alerts',
+              isActive: _currentIndex == 2,
+              onTap: () => setState(() => _currentIndex = 2),
+            ),
+            _buildBottomNavItem(
+              icon: Icons.person,
+              label: 'Profile',
+              isActive: _currentIndex == 3,
+              onTap: () => setState(() => _currentIndex = 3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomNavItem({
+    required IconData icon,
+    required String label,
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: isActive ? Theme.of(context).colorScheme.primary : Theme.of(context).disabledColor,
+            size: 24,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: isActive ? Theme.of(context).colorScheme.primary : Theme.of(context).disabledColor,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Extract the original home tab content to a separate widget
+class _HomeTab extends StatelessWidget {
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+  final bool isOnline = true;
+  final int tripsToday = 24;
+  final int totalTrips = 156;
+  final String userName = "Baelish 😎!";
+  final List<EmergencyContact> emergencyContacts = [
     EmergencyContact(name: "Police", number: "999", icon: "🚔"),
     EmergencyContact(name: "Ambulance", number: "911", icon: "🚑"),
     EmergencyContact(name: "Fire", number: "998", icon: "🚒"),
   ];
+
+  _HomeTab({required this.toggleTheme, required this.isDarkTheme});
+
   String greeting() {
     int time = DateTime.now().hour;
     if (time > 0 && time < 12) {
@@ -669,21 +824,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        automaticallyImplyLeading: false,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               // Header Section
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -727,14 +874,14 @@ class _HomeScreenState extends State<HomeScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: _buildStatCard(
+                    child: _buildStatCard(context,
                       number: tripsToday.toString(),
                       label: 'Trips Today',
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _buildStatCard(
+                    child: _buildStatCard(context,
                       number: totalTrips.toString(),
                       label: 'Total Trips',
                     ),
@@ -800,14 +947,14 @@ class _HomeScreenState extends State<HomeScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: _buildActionButton(
+                    child: _buildActionButton(context,
                       icon: '📍',
                       label: 'View Map',
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const MapScreen(),
+                            builder: (context) => MapScreen(toggleTheme: toggleTheme, isDarkTheme: isDarkTheme),
                           ),
                         );
                       },
@@ -815,14 +962,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _buildActionButton(
+                    child: _buildActionButton(context,
                       icon: '🔔',
                       label: 'Alerts',
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const AlertFeedScreen(),
+                            builder: (context) => AlertFeedScreen(toggleTheme: toggleTheme, isDarkTheme: isDarkTheme),
                           ),
                         );
                       },
@@ -837,7 +984,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(15),
                   boxShadow: [
                     BoxShadow(
@@ -859,7 +1006,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 15),
-                    ...emergencyContacts.map((contact) => _buildEmergencyContact(contact)),
+                    ...emergencyContacts.map((contact) => _buildEmergencyContact(context, contact)),
                   ],
                 ),
               ),
@@ -870,7 +1017,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(15),
                   boxShadow: [
                     BoxShadow(
@@ -892,56 +1039,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 15),
-                    _buildActivityItem('🚨 Responded to crash alert', '2 minutes ago'),
-                    _buildActivityItem('📍 Location shared', '15 minutes ago'),
-                    _buildActivityItem('✅ Trip completed', '1 hour ago'),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Bottom Navigation
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(15),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildBottomNavItem(
-                      icon: Icons.home,
-                      label: 'Home',
-                      isActive: _currentIndex == 0,
-                      onTap: () => _onNavItemTapped(0),
-                    ),
-                    _buildBottomNavItem(
-                      icon: Icons.map,
-                      label: 'Map',
-                      isActive: _currentIndex == 1,
-                      onTap: () => _onNavItemTapped(1),
-                    ),
-                    _buildBottomNavItem(
-                      icon: Icons.notifications,
-                      label: 'Alerts',
-                      isActive: _currentIndex == 2,
-                      onTap: () => _onNavItemTapped(2),
-                    ),
-                    _buildBottomNavItem(
-                      icon: Icons.person,
-                      label: 'Profile',
-                      isActive: _currentIndex == 3,
-                      onTap: () => _onNavItemTapped(3),
-                    ),
+                    _buildActivityItem(context, '🚨 Responded to crash alert', '2 minutes ago'),
+                    _buildActivityItem(context, '📍 Location shared', '15 minutes ago'),
+                    _buildActivityItem(context, '✅ Trip completed', '1 hour ago'),
                   ],
                 ),
               ),
@@ -949,15 +1049,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-    ),
     );
   }
 
-  Widget _buildStatCard({required String number, required String label}) {
+  Widget _buildStatCard(BuildContext context, {required String number, required String label}) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(15),
         boxShadow: [
           BoxShadow(
@@ -980,7 +1079,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 5),
           Text(
             label,
-            style: const TextStyle(fontSize: 14, color: Color(0xFF7F8C8D)),
+            style: TextStyle(fontSize: 14, color: Theme.of(context).hintColor),
             textAlign: TextAlign.center,
           ),
         ],
@@ -988,7 +1087,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildActionButton({
+  Widget _buildActionButton(BuildContext context, {
     required String icon,
     required String label,
     required VoidCallback onTap,
@@ -1020,37 +1119,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildBottomNavItem({
-    required IconData icon,
-    required String label,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isActive ? const Color(0xFF4A90E2) : const Color(0xFF7F8C8D),
-            size: 24,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: isActive ? const Color(0xFF4A90E2) : const Color(0xFF7F8C8D),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmergencyContact(EmergencyContact contact) {
+  Widget _buildEmergencyContact(BuildContext context, EmergencyContact contact) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -1087,14 +1156,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.call, color: Color(0xFF2ECC71)),
-            onPressed: () => _callEmergency(contact),
+            onPressed: () => _callEmergency(context, contact),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildActivityItem(String activity, String time) {
+  Widget _buildActivityItem(BuildContext context, String activity, String time) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -1125,43 +1194,18 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _onNavItemTapped(int index) {
-    setState(() {
-      _currentIndex = index;
-    });
-    
-    switch (index) {
-      case 0:
-        // Already on home
-        break;
-      case 1:
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const MapScreen()),
-        );
-        break;
-      case 2:
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const AlertFeedScreen()),
-        );
-        break;
-      case 3:
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const ProfileScreen()),
-        );
-        break;
+  void _callEmergency(BuildContext context, EmergencyContact contact) async {
+    final Uri phoneUri = Uri(scheme: 'tel', path: contact.number);
+    if (await canLaunchUrl(phoneUri)) {
+      await launchUrl(phoneUri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not launch phone app.'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
-  }
-
-  void _callEmergency(EmergencyContact contact) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Calling ${contact.name}...'),
-        backgroundColor: const Color(0xFF2ECC71),
-      ),
-    );
   }
 }
 
@@ -1186,9 +1230,14 @@ import 'package:resqnet/screens/register_screen.dart';
 import 'package:resqnet/screens/Home_Screen.dart';
 import 'package:resqnet/services/user_service.dart';
 
-
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+  const LoginScreen({
+    super.key,
+    required this.toggleTheme,
+    required this.isDarkTheme,
+  });
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -1337,6 +1386,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       SizedBox(height: 20),
 
+                      
                       //Password field
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1475,11 +1525,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       //Create Account Link
                       TextButton(
                         onPressed: () {
-                          // Navigate to register screen
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const RegisterScreen(),
+                              builder:
+                                  (context) => RegisterScreen(
+                                    toggleTheme: widget.toggleTheme,
+                                    isDarkTheme: widget.isDarkTheme,
+                                  ),
                             ),
                           );
                         },
@@ -1520,7 +1573,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
- // The new login logic for phone+password
   void _handleLogin() async {
     final phone = _phoneController.text.trim();
     final password = _passwordController.text.trim();
@@ -1543,623 +1595,554 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      if (userData['password'] == password) { // In production, use hashed passwords!
+      if (userData['password'] == password) {
+        // In production, use hashed passwords!
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          MaterialPageRoute(
+            builder:
+                (context) => HomeScreen(
+                  toggleTheme: widget.toggleTheme,
+                  isDarkTheme: widget.isDarkTheme,
+                ),
+          ),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Incorrect password.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Incorrect password.')));
       }
     } catch (e) {
       Navigator.of(context).pop(); // Remove loading indicator
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Login failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Login failed: $e')));
     }
   }
 }
+
 ================================================================================
 
 ------lib\screens\map_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+
+  const MapScreen({
+    super.key,
+    required this.toggleTheme,
+    required this.isDarkTheme,
+  });
 
   @override
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixin {
+  final Completer<GoogleMapController> _controller = Completer();
+  LatLng? _destination;
+  bool _mapReady = false;
+
+  static const CameraPosition _initialPosition = CameraPosition(
+    target: LatLng(0.315, 32.582), // Kampala coordinates
+    zoom: 13.0, // Safer zoom to prevent surface overload
+  );
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDestinationFromSMS();
+    });
+  }
+
+  Future<void> _loadDestinationFromSMS() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastMessage = prefs.getString('last_location_message');
+
+    if (lastMessage != null) {
+      final match = RegExp(r'^.+ - ([\-0-9.]+), ?([\-0-9.]+)$').firstMatch(lastMessage);
+      if (match != null) {
+        final lat = double.parse(match.group(1)!);
+        final lng = double.parse(match.group(2)!);
+        _destination = LatLng(lat, lng);
+      }
+    }
+
+    setState(() {
+      _mapReady = true;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    super.build(context); // required for keep-alive
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2C3E50)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Map View',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF2C3E50),
-          ),
-        ),
+        title: const Text('Map View'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.my_location, color: Color(0xFF4A90E2)),
-            onPressed: () {
-              _centerOnLocation();
-            },
+            icon: Icon(widget.isDarkTheme ? Icons.wb_sunny : Icons.nightlight_round),
+            onPressed: () => widget.toggleTheme(!widget.isDarkTheme),
           ),
         ],
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 200,
-              height: 200,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.map,
-                      size: 80,
-                      color: Color(0xFF4A90E2),
-                    ),
-                    SizedBox(height: 16),
-                    Text(
-                      'Map View',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF2C3E50),
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Coming Soon!',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Color(0xFF7F8C8D),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 30),
-            const Text(
-              'Interactive map with real-time location tracking\nand emergency response coordination',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                color: Color(0xFF7F8C8D),
-              ),
-            ),
-          ],
-        ),
-      ),
+      body: _mapReady
+          ? GoogleMap(
+              initialCameraPosition: _initialPosition,
+              myLocationEnabled: true,
+              onMapCreated: (GoogleMapController controller) {
+                _controller.complete(controller);
+              },
+              markers: _destination != null
+                  ? {
+                      Marker(
+                        markerId: const MarkerId('destination'),
+                        position: _destination!,
+                        infoWindow: const InfoWindow(title: "Emergency Location"),
+                      )
+                    }
+                  : {},
+            )
+          : const Center(child: CircularProgressIndicator()),
     );
   }
+}
 
-  void _centerOnLocation() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Centering on your location...'),
-        backgroundColor: Color(0xFF4A90E2),
-      ),
-    );
-  }
-} 
 ================================================================================
 
 ------lib\screens\profile_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:resqnet/screens/Login_Screen.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
+import 'Login_Screen.dart';
+import '../services/user_service.dart'; // Import your UserService
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+
+  const ProfileScreen({super.key, required this.toggleTheme, required this.isDarkTheme});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
-  bool isOnline = true;
-  String userName = "Baelish 😎!";
-  String userEmail = "baelish@resqnet.com";
-  String userPhone = "+256 700 123 456";
-  String userLocation = "Kampala, Uganda";
-  int totalTrips = 156;
-  int responseRate = 94;
-  double rating = 4.8;
+class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
+  // Initial values, these will be updated from Firestore
+  String userName = "Loading...";
+  String userEmail = "Loading...";
+  String userPhone = "Loading...";
+  String userLocation = "Loading...";
+  String userHardwareContact = "Loading..."; // New field for hardware contact
+  int totalTrips = 0;
+  int responseRate = 0;
+  double rating = 0.0;
+
+  File? _profileImage;
+  bool notificationsEnabled = false;
+  bool locationEnabled = false;
+  String currentLocation = '';
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+
+  late TabController _tabController;
+  final UserService _userService = UserService(); // Instance of UserService
+  final FirebaseAuth _auth = FirebaseAuth.instance; // Instance of FirebaseAuth
+
+  bool _isLoadingProfile = true; // State to manage loading indicator
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _initNotifications();
+    _loadProfileData(); // Load profile data from Firestore
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  /// Initializes local notifications.
+  Future<void> _initNotifications() async {
+    const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
+    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+  }
+
+  /// Shows a test notification to confirm notifications are enabled.
+  Future<void> _showTestNotification() async {
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'profile_channel',
+      'Profile Notifications',
+      channelDescription: 'Profile notification channel',
+      importance: Importance.max,
+      priority: Priority.high,
+      showWhen: false,
+    );
+    const NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
+    await flutterLocalNotificationsPlugin.show(
+      0,
+      'Test Notification',
+      'Notifications are enabled!',
+      platformDetails,
+    );
+  }
+
+  /// Toggles the notification setting and saves it to SharedPreferences.
+  Future<void> _toggleNotifications() async {
+    setState(() {
+      notificationsEnabled = !notificationsEnabled;
+    });
+    if (notificationsEnabled) await _showTestNotification();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('notificationsEnabled', notificationsEnabled);
+  }
+
+  /// Toggles the location setting and requests permissions if needed.
+  /// Saves the setting and current location to SharedPreferences.
+  Future<void> _toggleLocation() async {
+    if (!locationEnabled) {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        await Geolocator.openLocationSettings();
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Location permission denied'), backgroundColor: Colors.red),
+            );
+          }
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permanently denied'), backgroundColor: Colors.red),
+          );
+        }
+        return;
+      }
+      Position pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      setState(() {
+        locationEnabled = true;
+        currentLocation = '${pos.latitude}, ${pos.longitude}';
+      });
+    } else {
+      setState(() {
+        locationEnabled = false;
+        currentLocation = '';
+      });
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('locationEnabled', locationEnabled);
+    await prefs.setString('currentLocation', currentLocation);
+  }
+
+  /// Loads user profile data from Firestore and SharedPreferences.
+  Future<void> _loadProfileData() async {
+    setState(() {
+      _isLoadingProfile = true; // Start loading
+    });
+
+    final User? user = _auth.currentUser;
+    if (user != null) {
+      final userData = await _userService.getUserData(user.uid); // Fetch user data by UID
+      if (userData != null) {
+        setState(() {
+          userName = userData['fullName'] ?? 'N/A';
+          userEmail = userData['email'] ?? 'N/A';
+          userPhone = userData['phone'] ?? 'N/A';
+          userHardwareContact = userData['hardwareContact'] ?? 'N/A'; // Get hardware contact
+          // You might fetch totalTrips, responseRate, rating from Firestore as well if they are stored there
+          // For now, keeping them as default or existing values if not in Firestore
+        });
+      }
+    }
+
+    // Load local preferences as well
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      notificationsEnabled = prefs.getBool('notificationsEnabled') ?? false;
+      locationEnabled = prefs.getBool('locationEnabled') ?? false;
+      currentLocation = prefs.getString('currentLocation') ?? '';
+      _isLoadingProfile = false; // End loading
+    });
+  }
+
+  /// Allows the user to pick a profile image from the gallery.
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked != null) {
+      setState(() => _profileImage = File(picked.path));
+    }
+  }
+
+  /// Shows a dialog to edit profile information and saves changes to Firestore.
+  void _editProfile() {
+    final nameCtrl = TextEditingController(text: userName);
+    final emailCtrl = TextEditingController(text: userEmail);
+    final phoneCtrl = TextEditingController(text: userPhone);
+    final locationCtrl = TextEditingController(text: userLocation);
+    final hardwareContactCtrl = TextEditingController(text: userHardwareContact); // Controller for hardware contact
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Edit Profile'),
+        content: SingleChildScrollView( // Use SingleChildScrollView for scrollable content
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Full Name')),
+              TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: 'Email')),
+              TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Phone')),
+              TextField(controller: locationCtrl, decoration: const InputDecoration(labelText: 'Location')),
+              TextField(controller: hardwareContactCtrl, decoration: const InputDecoration(labelText: 'Hardware Contact')), // Hardware Contact field
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              final User? user = _auth.currentUser;
+              if (user != null) {
+                // Update user data in Firestore
+                await _userService.updateUserData(
+                  user.uid,
+                  {
+                    'fullName': nameCtrl.text,
+                    'email': emailCtrl.text,
+                    'phone': phoneCtrl.text,
+                    'userLocation': locationCtrl.text, // Assuming you want to save this
+                    'hardwareContact': hardwareContactCtrl.text, // Save hardware contact
+                  },
+                );
+                // Refresh local state after saving
+                await _loadProfileData();
+              }
+              if (mounted) {
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shows an about dialog for the application.
+  void _showAbout() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('About ResQnet'),
+        content: const Text('Version 1.0.0\n© 2025 ResQnet. All rights reserved.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      ),
+    );
+  }
+
+  /// Shows a help and support dialog.
+  void _showHelp() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Help & Support'),
+        content: const Text('• How to update profile: Tap the edit button.\n• For support email: support@resqnet.com'),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      ),
+    );
+  }
+
+  /// Helper widget to display an info card.
+  Widget _infoCard(String title, String value) => Column(
+        children: [
+          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(title, style: const TextStyle(color: Colors.grey)),
+        ],
+      );
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         elevation: 0,
+        automaticallyImplyLeading: false,
         systemOverlayStyle: SystemUiOverlayStyle.dark,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2C3E50)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Profile',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF2C3E50),
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit, color: Color(0xFF4A90E2)),
-            onPressed: () {
-              _editProfile();
-            },
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Column(
+        titleSpacing: 0,
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Profile Header
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
-                ),
-              ),
-              child: Column(
-                children: [
-                  // Profile Picture
-                  Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Color(0xFF4A90E2), Color(0xFF2ECC71)],
-                      ),
-                      borderRadius: BorderRadius.circular(50),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF4A90E2).withOpacity(0.3),
-                          blurRadius: 10,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: const Center(
-                      child: Text(
-                        '🏍️',
-                        style: TextStyle(fontSize: 40),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  
-                  // User Name and Status
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        userName,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF2C3E50),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isOnline ? const Color(0xFF2ECC71) : const Color(0xFF95A5A6),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          isOnline ? 'Online' : 'Offline',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 10),
-                  
-                  // User Info
-                  Text(
-                    userEmail,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: Color(0xFF7F8C8D),
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    userPhone,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: Color(0xFF7F8C8D),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Stats Section
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildStatCard(
-                      icon: '🚗',
-                      number: totalTrips.toString(),
-                      label: 'Total Trips',
-                    ),
-                  ),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: _buildStatCard(
-                      icon: '⚡',
-                      number: '$responseRate%',
-                      label: 'Response Rate',
-                    ),
-                  ),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: _buildStatCard(
-                      icon: '⭐',
-                      number: rating.toString(),
-                      label: 'Rating',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
-            // Settings Section
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  _buildSettingItem(
-                    icon: Icons.notifications,
-                    title: 'Notifications',
-                    subtitle: 'Manage your alerts',
-                    onTap: () => _manageNotifications(),
-                  ),
-                  _buildDivider(),
-                  _buildSettingItem(
-                    icon: Icons.location_on,
-                    title: 'Location Services',
-                    subtitle: 'GPS and tracking settings',
-                    onTap: () => _manageLocation(),
-                  ),
-                  _buildDivider(),
-                  _buildSettingItem(
-                    icon: Icons.security,
-                    title: 'Privacy & Security',
-                    subtitle: 'Account security settings',
-                    onTap: () => _managePrivacy(),
-                  ),
-                  _buildDivider(),
-                  _buildSettingItem(
-                    icon: Icons.help,
-                    title: 'Help & Support',
-                    subtitle: 'Get help and contact us',
-                    onTap: () => _showHelp(),
-                  ),
-                  _buildDivider(),
-                  _buildSettingItem(
-                    icon: Icons.info,
-                    title: 'About ResQnet',
-                    subtitle: 'App version and information',
-                    onTap: () => _showAbout(),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
-            // Logout Button
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _logout,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFE74C3C),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+            const SizedBox(height: 8),
+            Center(
+              child: RichText(
+                text: TextSpan(
+                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'Arial'),
                   children: [
-                    Icon(Icons.logout, color: Colors.white, size: 20),
-                    SizedBox(width: 10),
-                    Text(
-                      'Logout',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
+                    TextSpan(
+                      text: 'Res',
+                      style: TextStyle(color: Colors.red[700]),
+                    ),
+                    TextSpan(
+                      text: 'Q',
+                      style: TextStyle(color: Colors.red[700]),
+                    ),
+                    TextSpan(
+                      text: 'net',
+                      style: TextStyle(color: const Color(0xFF1976D2)),
                     ),
                   ],
                 ),
               ),
             ),
-
-            const SizedBox(height: 30),
+          ],
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: Theme.of(context).colorScheme.primary,
+          unselectedLabelColor: Colors.grey,
+          tabs: const [
+            Tab(icon: Icon(Icons.bar_chart), text: 'Stats'),
+            Tab(icon: Icon(Icons.settings), text: 'Settings'),
+            Tab(icon: Icon(Icons.more_horiz), text: 'Actions'),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildStatCard({
-    required String icon,
-    required String number,
-    required String label,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Text(icon, style: const TextStyle(fontSize: 24)),
-          const SizedBox(height: 8),
-          Text(
-            number,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF4A90E2),
+      body: _isLoadingProfile
+          ? const Center(child: CircularProgressIndicator()) // Show loading indicator
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                _buildStatsTab(),
+                _buildSettingsTab(),
+                _buildActionsTab(),
+              ],
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Color(0xFF7F8C8D),
-              fontWeight: FontWeight.w500,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
     );
   }
 
-  Widget _buildSettingItem({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF4A90E2).withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, color: const Color(0xFF4A90E2), size: 20),
-      ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF2C3E50),
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(
-          fontSize: 14,
-          color: Color(0xFF7F8C8D),
-        ),
-      ),
-      trailing: const Icon(
-        Icons.arrow_forward_ios,
-        color: Color(0xFF7F8C8D),
-        size: 16,
-      ),
-      onTap: onTap,
-    );
-  }
-
-  Widget _buildDivider() {
-    return const Divider(
-      height: 1,
-      color: Color(0xFFE8E8E8),
-      indent: 60,
-      endIndent: 20,
-    );
-  }
-
-  void _editProfile() {
-    // TODO: Implement edit profile functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Edit profile functionality coming soon!'),
-        backgroundColor: Color(0xFF4A90E2),
-      ),
-    );
-  }
-
-  void _manageNotifications() {
-    // TODO: Implement notifications settings
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Notifications settings coming soon!'),
-        backgroundColor: Color(0xFF4A90E2),
-      ),
-    );
-  }
-
-  void _manageLocation() {
-    // TODO: Implement location settings
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Location settings coming soon!'),
-        backgroundColor: Color(0xFF4A90E2),
-      ),
-    );
-  }
-
-  void _managePrivacy() {
-    // TODO: Implement privacy settings
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Privacy settings coming soon!'),
-        backgroundColor: Color(0xFF4A90E2),
-      ),
-    );
-  }
-
-  void _showHelp() {
-    // TODO: Implement help and support
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Help and support coming soon!'),
-        backgroundColor: Color(0xFF4A90E2),
-      ),
-    );
-  }
-
-  void _showAbout() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('About ResQnet'),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildStatsTab() => SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
           children: [
-            Text('Version: 1.0.0'),
-            SizedBox(height: 8),
-            Text('Build: 2024.1.1'),
-            SizedBox(height: 8),
-            Text('Stay Protected, Stay Connected'),
-            SizedBox(height: 16),
-            Text('© 2024 ResQnet. All rights reserved.'),
+            GestureDetector(
+              onTap: _pickImage,
+              child: CircleAvatar(
+                radius: 50,
+                backgroundColor: const Color(0xFF4A90E2),
+                backgroundImage: _profileImage != null ? FileImage(_profileImage!) : null,
+                child: _profileImage == null ? const Icon(Icons.person, color: Colors.white, size: 40) : null,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(userName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            Text(userEmail, style: const TextStyle(color: Colors.grey)),
+            Text(userPhone, style: const TextStyle(color: Colors.grey)),
+            Text(userLocation, style: const TextStyle(color: Colors.grey)),
+            const SizedBox(height: 16),
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _infoCard('Total Trips', '$totalTrips'),
+                    _infoCard('Response', '$responseRate%'),
+                    _infoCard('Rating', '$rating'),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
+      );
 
-  void _logout() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+  Widget _buildSettingsTab() => ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          SwitchListTile(
+            title: const Text('Enable Notifications'),
+            value: notificationsEnabled,
+            onChanged: (_) => _toggleNotifications(),
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-                (route) => false,
-              );
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFFE74C3C),
+          SwitchListTile(
+            title: const Text('Enable Location'),
+            value: locationEnabled,
+            onChanged: (_) => _toggleLocation(),
+          ),
+          SwitchListTile(
+            title: const Text('Dark Mode'),
+            subtitle: Text(widget.isDarkTheme ? 'Dark mode is ON' : 'Dark mode is OFF'),
+            value: widget.isDarkTheme,
+            onChanged: (val) => widget.toggleTheme(val),
+          ),
+          if (currentLocation.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text('Location: $currentLocation', style: const TextStyle(color: Colors.blueGrey)),
             ),
-            child: const Text('Logout'),
+          // Display the hardware contact
+          ListTile(
+            title: const Text('Hardware Contact'),
+            subtitle: Text(userHardwareContact),
+            leading: const Icon(Icons.hardware),
           ),
         ],
-      ),
-    );
-  }
+      );
+
+  Widget _buildActionsTab() => ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          ListTile(
+            leading: const Icon(Icons.edit),
+            title: const Text('Edit Profile'),
+            onTap: _editProfile,
+          ),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('About ResQnet'),
+            onTap: _showAbout,
+          ),
+          ListTile(
+            leading: const Icon(Icons.help_outline),
+            title: const Text('Help & Support'),
+            onTap: _showHelp,
+          ),
+          ListTile(
+            leading: const Icon(Icons.logout, color: Color(0xFFE74C3C)),
+            title: const Text('Logout'),
+            onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme))),
+          ),
+        ],
+      );
 }
 
 ================================================================================
@@ -2169,9 +2152,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:resqnet/screens/home_screen.dart';
 import 'package:resqnet/services/user_service.dart';
+import 'package:resqnet/services/sms_service.dart';
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+  const RegisterScreen({super.key, required this.toggleTheme, required this.isDarkTheme});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -2183,11 +2169,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _helmetContactController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _isLoading = false;
 
   final UserService _userService = UserService();
 
@@ -2197,6 +2185,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _usernameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _helmetContactController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -2206,18 +2195,65 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2C3E50)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        centerTitle: true,
-        title: const Text(
-          'ResQnet Sign Up',
-          style: TextStyle(color: Color(0xFF2C3E50)),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(110),
+        child: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          systemOverlayStyle: SystemUiOverlayStyle.dark,
+          automaticallyImplyLeading: false,
+          titleSpacing: 0,
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Center(
+                child: RichText(
+                  text: TextSpan(
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'Arial'),
+                    children: [
+                      TextSpan(
+                        text: 'Res',
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                      TextSpan(
+                        text: 'Q',
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                      TextSpan(
+                        text: 'net',
+                        style: TextStyle(color: Color(0xFF1976D2)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(40),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 10, left: 16, right: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Color(0xFF2C3E50)),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  const Spacer(),
+                  const Text(
+                    'Register',
+                    style: TextStyle(
+                      color: Color(0xFF2C3E50),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 20,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
       body: SafeArea(
@@ -2333,6 +2369,62 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 20),
 
+                // Hardware Phone Number Field
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Helmet Contact',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF2C3E50),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _helmetContactController,
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(
+                        hintText: '+256 700 000 000',
+                        labelText: 'Phone Number',
+                        filled: true,
+                        fillColor: Colors.white,
+                        prefixIcon: Icon(Icons.phone),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: Color(0xFFE8E8E8),
+                            width: 2,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE8E8E8),
+                            width: 2,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF4A90E2),
+                            width: 2,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.all(15),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter hardware phone number';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
                 // Password
                 _buildTextField(
                   label: 'Password',
@@ -2399,19 +2491,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        _handleRegister();
-                      }
-                    },
-                    child: const Text(
-                      'Create Account',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
+                    onPressed: _isLoading ? null : _handleRegister,
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text(
+                            'Create Account',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -2438,7 +2528,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Helper to build text fields
   Widget _buildTextField({
     required String label,
     required TextEditingController controller,
@@ -2497,45 +2586,62 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Actual register logic
   Future<void> _handleRegister() async {
-    final fullName = _nameController.text.trim();
-    final username = _usernameController.text.trim();
-    final email = _emailController.text.trim();
-    final phone = _phoneController.text.trim();
-    final password = _passwordController.text.trim();
+    if (!_formKey.currentState!.validate()) return;
 
-    // Show loading
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
+    setState(() => _isLoading = true);
 
     try {
-      await _userService.saveUserDataCustom(
-        fullName: fullName,
-        username: username,
-        email: email,
-        phone: phone,
-        password: password,
+      // Initialize SMS service with user data
+      SmsService.initUserData(
+        _nameController.text.trim(),
+        _phoneController.text.trim(),
       );
-      Navigator.of(context).pop(); // remove loading
 
-      // Navigate to home
+      // Send contact info to hardware
+      final smsSuccess = await SmsService.sendContactToHardware(
+        _helmetContactController.text.trim(),
+      );
+
+      if (!smsSuccess) {
+        throw 'Failed to register with hardware';
+      }
+
+      // Save user data to Firestore
+      await _userService.saveUserDataCustom(
+        fullName: _nameController.text.trim(),
+        username: _usernameController.text.trim(),
+        email: _emailController.text.trim(),
+        phone: _phoneController.text.trim(),
+        hardwareContact: _helmetContactController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(
+            toggleTheme: widget.toggleTheme,
+            isDarkTheme: widget.isDarkTheme,
+          ),
+        ),
       );
     } catch (e) {
-      Navigator.of(context).pop(); // remove loading
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Registration failed: $e')),
+        SnackBar(
+          content: Text('Registration failed: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 }
-
 ================================================================================
 
 ------lib\services\auth_service.dart
@@ -2750,207 +2856,200 @@ class LocationService {
 ================================================================================
 
 ------lib\services\maps_service.dart
-import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:math';
 import '../config/api_config.dart';
 
 class MapsService {
+  static final _cache = <String, List<Map<String, dynamic>>>{};
+  static DateTime? _lastFetchTime;
 
-  // Get address from coordinates
-  static Future<String?> getAddressFromCoordinates(
-      double latitude,
-      double longitude
-      ) async {
-    if (!ApiConfig.isConfigured) {
-      print('Warning: Google Maps API key not configured');
-      return null;
+  static Future<List<Map<String, dynamic>>> fetchNearbyHospitals(
+    double lat,
+    double lng, {
+    int radius = 5000,
+    bool useCache = true,
+  }) async {
+    final cacheKey = 'hospitals_${lat}_${lng}';
+    
+    if (useCache && 
+        _cache.containsKey(cacheKey) && 
+        _lastFetchTime != null && 
+        DateTime.now().difference(_lastFetchTime!) < Duration(minutes: 5)) {
+      return _cache[cacheKey]!;
     }
 
-    final url = '${ApiConfig.geocodingApi}?latlng=$latitude,$longitude&key=${ApiConfig.mapsApiKey}';
+    const endpoint = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json';
+    final url = Uri.parse('$endpoint?'
+        'location=$lat,$lng'
+        '&radius=$radius'
+        '&type=hospital'
+        '&key=${ApiConfig.mapsApiKey}');
 
     try {
-      final response = await http.get(Uri.parse(url));
-
+      final response = await http.get(url);
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['results'] != null && data['results'].isNotEmpty) {
-          return data['results'][0]['formatted_address'];
-        }
+        final data = _parseHospitalResponse(response.body, lat, lng);
+        _cache[cacheKey] = data;
+        _lastFetchTime = DateTime.now();
+        return data;
       }
+      return [];
     } catch (e) {
-      print('Error getting address: $e');
-    }
-
-    return null;
-  }
-
-  // Get coordinates from address
-  static Future<Map<String, double>?> getCoordinatesFromAddress(String address) async {
-    if (!ApiConfig.isConfigured) {
-      print('Warning: Google Maps API key not configured');
-      return null;
-    }
-
-    final url = '${ApiConfig.geocodingApi}?address=${Uri.encodeComponent(address)}&key=${ApiConfig.mapsApiKey}';
-
-    try {
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['results'] != null && data['results'].isNotEmpty) {
-          final location = data['results'][0]['geometry']['location'];
-          return {
-            'latitude': location['lat'].toDouble(),
-            'longitude': location['lng'].toDouble(),
-          };
-        }
-      }
-    } catch (e) {
-      print('Error getting coordinates: $e');
-    }
-
-    return null;
-  }
-
-  // Calculate fastest route to emergency location)
-  static Future<Map<String, dynamic>?> getEmergencyRoute(
-      double startLat,
-      double startLng,
-      double emergencyLat,
-      double emergencyLng,
-      ) async {
-    if (!ApiConfig.isConfigured) {
-      print('Warning: Google Maps API key not configured');
-      return null;
-    }
-
-    final origin = '$startLat,$startLng';
-    final destination = '$emergencyLat,$emergencyLng';
-
-    final url = 'https://maps.googleapis.com/maps/api/directions/json?origin=$origin&destination=$destination&mode=driving&key=${ApiConfig.mapsApiKey}';
-
-    try {
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['routes'] != null && data['routes'].isNotEmpty) {
-          final route = data['routes'][0];
-          final leg = route['legs'][0];
-
-          return {
-            'distance': leg['distance']['text'],
-            'duration': leg['duration']['text'],
-            'distanceValue': leg['distance']['value'], // in meters
-            'durationValue': leg['duration']['value'], // in seconds
-          };
-        }
-      }
-    } catch (e) {
-      print('Error getting emergency route: $e');
-    }
-
-    return null;
-  }
-
-  // Find nearby emergency services
-  static Future<List<Map<String, dynamic>>> findNearbyEmergencyServices(
-      double latitude,
-      double longitude, {
-        int radius = 10000,
-        List<String> serviceTypes = const ['hospital', 'police'],
-      }) async {
-    if (!ApiConfig.isConfigured) {
-      print('Warning: Google Maps API key not configured');
+      print('Hospital fetch error: $e');
       return [];
     }
-
-    List<Map<String, dynamic>> emergencyServices = [];
-
-    for (String serviceType in serviceTypes) {
-      final services = await _findServiceType(latitude, longitude, serviceType, radius);
-      emergencyServices.addAll(services);
-    }
-
-    return emergencyServices;
   }
 
-  // Helper method to find specific service type
-  static Future<List<Map<String, dynamic>>> _findServiceType(
-      double latitude,
-      double longitude,
-      String serviceType,
-      int radius,
-      ) async {
-    final url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=$latitude,$longitude&radius=$radius&type=$serviceType&key=${ApiConfig.mapsApiKey}';
-
+  static List<Map<String, dynamic>> _parseHospitalResponse(
+      String response, double originLat, double originLng) {
     try {
-      final response = await http.get(Uri.parse(url));
+      final jsonData = jsonDecode(response);
+      final results = (jsonData['results'] as List).map((hospital) {
+        final lat = hospital['geometry']['location']['lat'];
+        final lng = hospital['geometry']['location']['lng'];
+        return {
+          'name': hospital['name']?.toString() ?? 'Unknown Hospital',
+          'vicinity': hospital['vicinity']?.toString() ?? 'Address not available',
+          'distance': _calculateDistance(originLat, originLng, lat, lng)
+              .toStringAsFixed(1),
+          'latitude': lat,
+          'longitude': lng,
+        };
+      }).toList();
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['results'] != null) {
-          return (data['results'] as List).map((place) => {
-            'name': place['name'],
-            'vicinity': place['vicinity'],
-            'latitude': place['geometry']['location']['lat'],
-            'longitude': place['geometry']['location']['lng'],
-            'rating': place['rating'],
-            'serviceType': serviceType,
-            'placeId': place['place_id'],
-          }).toList();
-        }
-      }
+      results.sort((a, b) => double.parse(a['distance']!)
+          .compareTo(double.parse(b['distance']!)));
+      return results;
     } catch (e) {
-      print('Error finding $serviceType: $e');
-    }
-
-    return [];
-  }
-
-  // Validate API key
-  static Future<bool> validateApiKey() async {
-    if (!ApiConfig.isConfigured) return false;
-
-    try {
-      final response = await http.get(
-          Uri.parse('https://maps.googleapis.com/maps/api/geocode/json?address=test&key=${ApiConfig.mapsApiKey}')
-      );
-
-      return response.statusCode == 200;
-    } catch (e) {
-      return false;
+      print('Response parsing error: $e');
+      return [];
     }
   }
+
+  static double _calculateDistance(lat1, lng1, lat2, lng2) {
+    const earthRadius = 6371; // km
+    final dLat = _toRadians(lat2 - lat1);
+    final dLng = _toRadians(lng2 - lng1);
+
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_toRadians(lat1)) *
+            cos(_toRadians(lat2)) *
+            sin(dLng / 2) *
+            sin(dLng / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  static double _toRadians(double degrees) => degrees * (pi / 180);
 }
-
 ================================================================================
 
 ------lib\services\sms_service.dart
 import 'package:telephony/telephony.dart';
-import '../controllers/sms_controller.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SmsService {
-  final Telephony telephony = Telephony.instance;
+  static final Telephony telephony = Telephony.instance;
+  static String? _trustedNumber;
+  static String? _currentUserName;
+  static String? _currentUserPhone;
 
-  Future<void> initSmsListener() async {
-    bool? permissionsGranted = await telephony.requestPhoneAndSmsPermissions;
-    if (permissionsGranted == true) {
-      telephony.listenIncomingSms(
-        onNewMessage: (SmsMessage message) {
-          SmsController().handleIncomingSms(message);
-        },
-        listenInBackground: true,
-      );
+  // Initialize with user data
+  static void initUserData(String name, String phone) {
+    _currentUserName = name;
+    _currentUserPhone = phone;
+  }
+  // Add this method to your SmsService class
+static Future<bool> sendContactToHardware(String hardwareNumber) async {
+  if (_currentUserName == null || _currentUserPhone == null) {
+    throw 'User data not initialized';
+  }
+
+  try {
+    await telephony.sendSms(
+      to: hardwareNumber,
+      message: '$_currentUserName - $_currentUserPhone',
+    );
+    return true;
+  } catch (e) {
+    throw 'Failed to send SMS to hardware: $e';
+  }
+}
+  // Getter for hardware contact
+  static String? get hardwareContact => _trustedNumber;
+
+  // Load trusted number from Firestore
+  static Future<void> loadTrustedNumberFromFirestore() async {
+    try {
+      DocumentSnapshot configDoc = await FirebaseFirestore.instance
+          .collection('settings')
+          .doc('app_config')
+          .get();
+
+      if (configDoc.exists) {
+        _trustedNumber = configDoc.get('trustedPhoneNumber')?.toString();
+      }
+    } catch (e) {
+      print('Error loading trusted number: $e');
     }
   }
 
-  Future<void> sendSms(String to, String message) async {
-    await telephony.sendSms(to: to, message: message);
+  // Send SMS message
+  static Future<bool> sendSms(String number, String message) async {
+    try {
+      await telephony.sendSms(to: number, message: message);
+      return true;
+    } catch (e) {
+      print('Failed to send SMS: $e');
+      return false;
+    }
+  }
+
+  // Initialize SMS listener
+  static void initSmsListener() {
+    telephony.listenIncomingSms(
+      onNewMessage: _handleIncomingSms,
+      onBackgroundMessage: _backgroundMessageHandler,
+    );
+  }
+
+  // Background message handler
+  static Future<void> _backgroundMessageHandler(SmsMessage message) async {
+    await _handleIncomingSms(message);
+  }
+
+  // Handle incoming messages
+  static Future<void> _handleIncomingSms(SmsMessage message) async {
+    if (_trustedNumber == null) {
+      await loadTrustedNumberFromFirestore();
+    }
+
+    if (message.address == _trustedNumber && 
+        message.body?.toLowerCase().contains('user needs help') == true) {
+      await _handleEmergencyRequest(message.address!);
+    }
+  }
+
+  static Future<void> _handleEmergencyRequest(String sender) async {
+    try {
+      final position = await _getCurrentPosition();
+      // Add your emergency response logic here
+      await sendSms(sender, 'Emergency response initiated');
+    } catch (e) {
+      print('Error handling emergency: $e');
+    }
+  }
+
+  static Future<Position> _getCurrentPosition() async {
+    return await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
   }
 }
-
 ================================================================================
 
 ------lib\services\user_service.dart
@@ -2967,35 +3066,108 @@ class UserService {
         .limit(1)
         .get();
     if (query.docs.isNotEmpty) {
+      // Return the data of the first document found
       return query.docs.first.data();
     }
     return null;
   }
 
-  // Save new user data
+  // Get user data by User ID (UID)
+  // This is crucial for fetching the currently logged-in user's profile information.
+  Future<Map<String, dynamic>?> getUserData(String uid) async {
+    try {
+      // Fetch the document directly using the UID as the document ID
+      DocumentSnapshot doc = await _db.collection('users').doc(uid).get();
+      if (doc.exists) {
+        return doc.data() as Map<String, dynamic>?;
+      }
+      return null;
+    } catch (e) {
+      print('Error getting user data: $e');
+      return null;
+    }
+  }
+
+  // Save new user data when a user registers
   Future<void> saveUserDataCustom({
     required String fullName,
     required String username,
     required String email,
     required String phone,
+    required String hardwareContact,
     required String password,
   }) async {
+    // When saving new user data, it's often good practice to use the
+    // Firebase Auth UID as the document ID in Firestore for easier retrieval.
+    // However, based on your `getUserByPhone` and current `saveUserDataCustom`,
+    // it seems you're using `add` which creates an auto-generated ID.
+    // If you intend to fetch by UID, you should store the UID as the document ID
+    // during registration or link the user's phone to a Firebase Auth user.
+    // For now, I'll keep the `add` method as it was, but be aware of this.
     await _db.collection('users').add({
       'fullName': fullName,
       'username': username,
       'email': email,
       'phone': phone,
-      'password': password,
+      'hardwareContact': hardwareContact,
+      'password': password, // Remember: Store hashed passwords in production!
       'createdAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  // Update existing user data by User ID (UID)
+  // This method will be used by the ProfileScreen to save edited information.
+  Future<void> updateUserData(String uid, Map<String, dynamic> data) async {
+    try {
+      // Update the document corresponding to the user's UID
+      await _db.collection('users').doc(uid).update(data);
+      print('User data updated successfully for UID: $uid');
+    } catch (e) {
+      print('Error updating user data for UID $uid: $e');
+      // You might want to throw an exception or return a boolean to indicate success/failure
+      rethrow; // Re-throw the error so the calling widget can handle it
+    }
   }
 }
 
 ================================================================================
 
-------lib\utils\constants.dart
-class Constants {
-  static const String trustedNumber = "+256701234567"; // change to your actual trusted number
+------lib\utils\location_utils.dart
+import 'dart:math';
+
+class LocationUtils {
+  static Future<List<String>> getNearbyHospitals(double lat, double lng) async {
+    return [
+      "Mulago Hospital - 0.338,32.581",
+      "Nakasero Hospital - 0.318,32.585",
+      "Case Clinic - 0.313,32.582"
+    ];
+  }
+
+  static Future<List<String>> getNearbyUsers(double lat, double lng) async {
+    return [
+      "User1 - 0.320,32.579",
+      "User2 - 0.322,32.583",
+      "User3 - 0.324,32.588",
+      "User4 - 0.328,32.590",
+      "User5 - 0.330,32.593"
+    ];
+  }
+
+  static double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const earthRadius = 6371;
+    final dLat = _toRadians(lat2 - lat1);
+    final dLon = _toRadians(lon2 - lon1);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_toRadians(lat1)) * cos(_toRadians(lat2)) *
+            sin(dLon / 2) * sin(dLon / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  static double _toRadians(double degree) {
+    return degree * pi / 180;
+  }
 }
 
 ================================================================================
