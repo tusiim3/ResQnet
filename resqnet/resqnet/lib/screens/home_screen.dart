@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:resqnet/screens/map_screen.dart';
 import 'package:resqnet/screens/alert_feed_screen.dart';
 import 'package:resqnet/screens/profile_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+  const HomeScreen({super.key, required this.toggleTheme, required this.isDarkTheme});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -13,16 +15,113 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-  
-  bool isOnline = true;
-  int tripsToday = 24;
-  int totalTrips = 156;
-  String userName = "Baelish 😎!";
-  List<EmergencyContact> emergencyContacts = [
+
+  List<Widget> get _screens => [
+    _HomeTab(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
+    MapScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
+    AlertFeedScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
+    ProfileScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+
+      body: _screens[_currentIndex],
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildBottomNavItem(
+              icon: Icons.home,
+              label: 'Home',
+              isActive: _currentIndex == 0,
+              onTap: () => setState(() => _currentIndex = 0),
+            ),
+            _buildBottomNavItem(
+              icon: Icons.map,
+              label: 'Map',
+              isActive: _currentIndex == 1,
+              onTap: () => setState(() => _currentIndex = 1),
+            ),
+            _buildBottomNavItem(
+              icon: Icons.notifications,
+              label: 'Alerts',
+              isActive: _currentIndex == 2,
+              onTap: () => setState(() => _currentIndex = 2),
+            ),
+            _buildBottomNavItem(
+              icon: Icons.person,
+              label: 'Profile',
+              isActive: _currentIndex == 3,
+              onTap: () => setState(() => _currentIndex = 3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomNavItem({
+    required IconData icon,
+    required String label,
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: isActive ? Theme.of(context).colorScheme.primary : Theme.of(context).disabledColor,
+            size: 24,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: isActive ? Theme.of(context).colorScheme.primary : Theme.of(context).disabledColor,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Extract the original home tab content to a separate widget
+class _HomeTab extends StatelessWidget {
+  final Function(bool) toggleTheme;
+  final bool isDarkTheme;
+  final bool isOnline = true;
+  final int tripsToday = 24;
+  final int totalTrips = 156;
+  final String userName = "Baelish 😎!";
+  final List<EmergencyContact> emergencyContacts = [
     EmergencyContact(name: "Police", number: "999", icon: "🚔"),
     EmergencyContact(name: "Ambulance", number: "911", icon: "🚑"),
     EmergencyContact(name: "Fire", number: "998", icon: "🚒"),
   ];
+
+  _HomeTab({required this.toggleTheme, required this.isDarkTheme});
+
   String greeting() {
     int time = DateTime.now().hour;
     if (time > 0 && time < 12) {
@@ -36,21 +135,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
-        automaticallyImplyLeading: false,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               // Header Section
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -94,14 +185,14 @@ class _HomeScreenState extends State<HomeScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: _buildStatCard(
+                    child: _buildStatCard(context,
                       number: tripsToday.toString(),
                       label: 'Trips Today',
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _buildStatCard(
+                    child: _buildStatCard(context,
                       number: totalTrips.toString(),
                       label: 'Total Trips',
                     ),
@@ -167,14 +258,14 @@ class _HomeScreenState extends State<HomeScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: _buildActionButton(
+                    child: _buildActionButton(context,
                       icon: '📍',
                       label: 'View Map',
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const MapScreen(),
+                            builder: (context) => MapScreen(toggleTheme: toggleTheme, isDarkTheme: isDarkTheme),
                           ),
                         );
                       },
@@ -182,14 +273,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _buildActionButton(
+                    child: _buildActionButton(context,
                       icon: '🔔',
                       label: 'Alerts',
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const AlertFeedScreen(),
+                            builder: (context) => AlertFeedScreen(toggleTheme: toggleTheme, isDarkTheme: isDarkTheme),
                           ),
                         );
                       },
@@ -204,7 +295,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(15),
                   boxShadow: [
                     BoxShadow(
@@ -226,7 +317,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 15),
-                    ...emergencyContacts.map((contact) => _buildEmergencyContact(contact)),
+                    ...emergencyContacts.map((contact) => _buildEmergencyContact(context, contact)),
                   ],
                 ),
               ),
@@ -237,7 +328,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(15),
                   boxShadow: [
                     BoxShadow(
@@ -259,56 +350,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 15),
-                    _buildActivityItem('🚨 Responded to crash alert', '2 minutes ago'),
-                    _buildActivityItem('📍 Location shared', '15 minutes ago'),
-                    _buildActivityItem('✅ Trip completed', '1 hour ago'),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Bottom Navigation
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(15),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildBottomNavItem(
-                      icon: Icons.home,
-                      label: 'Home',
-                      isActive: _currentIndex == 0,
-                      onTap: () => _onNavItemTapped(0),
-                    ),
-                    _buildBottomNavItem(
-                      icon: Icons.map,
-                      label: 'Map',
-                      isActive: _currentIndex == 1,
-                      onTap: () => _onNavItemTapped(1),
-                    ),
-                    _buildBottomNavItem(
-                      icon: Icons.notifications,
-                      label: 'Alerts',
-                      isActive: _currentIndex == 2,
-                      onTap: () => _onNavItemTapped(2),
-                    ),
-                    _buildBottomNavItem(
-                      icon: Icons.person,
-                      label: 'Profile',
-                      isActive: _currentIndex == 3,
-                      onTap: () => _onNavItemTapped(3),
-                    ),
+                    _buildActivityItem(context, '🚨 Responded to crash alert', '2 minutes ago'),
+                    _buildActivityItem(context, '📍 Location shared', '15 minutes ago'),
+                    _buildActivityItem(context, '✅ Trip completed', '1 hour ago'),
                   ],
                 ),
               ),
@@ -316,15 +360,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-    ),
     );
   }
 
-  Widget _buildStatCard({required String number, required String label}) {
+  Widget _buildStatCard(BuildContext context, {required String number, required String label}) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(15),
         boxShadow: [
           BoxShadow(
@@ -347,7 +390,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 5),
           Text(
             label,
-            style: const TextStyle(fontSize: 14, color: Color(0xFF7F8C8D)),
+            style: TextStyle(fontSize: 14, color: Theme.of(context).hintColor),
             textAlign: TextAlign.center,
           ),
         ],
@@ -355,7 +398,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildActionButton({
+  Widget _buildActionButton(BuildContext context, {
     required String icon,
     required String label,
     required VoidCallback onTap,
@@ -387,37 +430,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildBottomNavItem({
-    required IconData icon,
-    required String label,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isActive ? const Color(0xFF4A90E2) : const Color(0xFF7F8C8D),
-            size: 24,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: isActive ? const Color(0xFF4A90E2) : const Color(0xFF7F8C8D),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmergencyContact(EmergencyContact contact) {
+  Widget _buildEmergencyContact(BuildContext context, EmergencyContact contact) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -454,14 +467,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.call, color: Color(0xFF2ECC71)),
-            onPressed: () => _callEmergency(contact),
+            onPressed: () => _callEmergency(context, contact),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildActivityItem(String activity, String time) {
+  Widget _buildActivityItem(BuildContext context, String activity, String time) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -492,43 +505,18 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _onNavItemTapped(int index) {
-    setState(() {
-      _currentIndex = index;
-    });
-    
-    switch (index) {
-      case 0:
-        // Already on home
-        break;
-      case 1:
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const MapScreen()),
-        );
-        break;
-      case 2:
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const AlertFeedScreen()),
-        );
-        break;
-      case 3:
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const ProfileScreen()),
-        );
-        break;
+  void _callEmergency(BuildContext context, EmergencyContact contact) async {
+    final Uri phoneUri = Uri(scheme: 'tel', path: contact.number);
+    if (await canLaunchUrl(phoneUri)) {
+      await launchUrl(phoneUri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not launch phone app.'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
-  }
-
-  void _callEmergency(EmergencyContact contact) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Calling ${contact.name}...'),
-        backgroundColor: const Color(0xFF2ECC71),
-      ),
-    );
   }
 }
 
