@@ -160,6 +160,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       SizedBox(height: 20),
 
+                      
                       //Password field
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

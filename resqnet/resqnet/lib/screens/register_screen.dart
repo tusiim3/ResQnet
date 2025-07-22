@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:resqnet/screens/home_screen.dart';
 import 'package:resqnet/services/user_service.dart';
+import 'package:resqnet/services/sms_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
@@ -18,11 +19,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _helmetContactController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _isLoading = false;
 
   final UserService _userService = UserService();
 
@@ -32,6 +35,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _usernameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _helmetContactController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -77,11 +81,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ],
           ),
           bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(40),
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 10, left: 16, right: 16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+            preferredSize: const Size.fromHeight(40),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 10, left: 16, right: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   IconButton(
                     icon: const Icon(Icons.arrow_back, color: Color(0xFF2C3E50)),
@@ -94,14 +98,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       color: Color(0xFF2C3E50),
                       fontWeight: FontWeight.w600,
                       fontSize: 20,
-                      
                     ),
                   ),
                 ],
-              
+              ),
             ),
           ),
-        ),
         ),
       ),
       body: SafeArea(
@@ -217,6 +219,62 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 20),
 
+                // Hardware Phone Number Field
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Helmet Contact',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF2C3E50),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _helmetContactController,
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(
+                        hintText: '+256 700 000 000',
+                        labelText: 'Phone Number',
+                        filled: true,
+                        fillColor: Colors.white,
+                        prefixIcon: Icon(Icons.phone),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: Color(0xFFE8E8E8),
+                            width: 2,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE8E8E8),
+                            width: 2,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF4A90E2),
+                            width: 2,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.all(15),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter hardware phone number';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
                 // Password
                 _buildTextField(
                   label: 'Password',
@@ -283,19 +341,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        _handleRegister();
-                      }
-                    },
-                    child: const Text(
-                      'Create Account',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
+                    onPressed: _isLoading ? null : _handleRegister,
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text(
+                            'Create Account',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -322,7 +378,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Helper to build text fields
   Widget _buildTextField({
     required String label,
     required TextEditingController controller,
@@ -381,101 +436,38 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // // Actual register logic
-  // Future<void> _handleRegister() async {
-  //   final fullName = _nameController.text.trim();
-  //   final username = _usernameController.text.trim();
-  //   final email = _emailController.text.trim();
-  //   final phone = _phoneController.text.trim();
-  //   final password = _passwordController.text.trim();
-
-  //   // Show loading
-  //   showDialog(
-  //     context: context,
-  //     builder:
-  //         (context) => AlertDialog(
-  //           title: const Text('Account Created'),
-  //           content: const Text('Your account has been successfully created!'),
-  //           actions: [
-  //             TextButton(
-  //               onPressed: () {
-  //                 Navigator.push(
-  //                   context,
-  //                   MaterialPageRoute(
-  //                     builder: (context) => HomeScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
-  //                   ),
-  //                 );
-  //               },
-  //               child: const Text('OK'),
-  //             ),
-  //           ],
-  //         ),
-  //       ),
-  //       const SizedBox(height: 8),
-  //       TextFormField(
-  //         controller: controller,
-  //         keyboardType: keyboardType,
-  //         obscureText: obscureText,
-  //         decoration: InputDecoration(
-  //           hintText: hint,
-  //           suffixIcon: suffixIcon,
-  //           filled: true,
-  //           fillColor: Colors.white,
-  //           border: OutlineInputBorder(
-  //             borderRadius: BorderRadius.circular(10),
-  //             borderSide: const BorderSide(color: Color(0xFFE8E8E8), width: 2),
-  //           ),
-  //           enabledBorder: OutlineInputBorder(
-  //             borderRadius: BorderRadius.circular(10),
-  //             borderSide: const BorderSide(color: Color(0xFFE8E8E8), width: 2),
-  //           ),
-  //           focusedBorder: OutlineInputBorder(
-  //             borderRadius: BorderRadius.circular(10),
-  //             borderSide: const BorderSide(color: Color(0xFF4A90E2), width: 2),
-  //           ),
-  //           errorBorder: OutlineInputBorder(
-  //             borderRadius: BorderRadius.circular(10),
-  //             borderSide: const BorderSide(color: Colors.red, width: 2),
-  //           ),
-  //           focusedErrorBorder: OutlineInputBorder(
-  //             borderRadius: BorderRadius.circular(10),
-  //             borderSide: const BorderSide(color: Colors.red, width: 2),
-  //           ),
-  //           contentPadding: const EdgeInsets.all(15),
-  //         ),
-  //         validator: validator,
-  //       ),
-  //     ],
-  //   );
-  // }
-
-  // Actual register logic
   Future<void> _handleRegister() async {
-    final fullName = _nameController.text.trim();
-    final username = _usernameController.text.trim();
-    final email = _emailController.text.trim();
-    final phone = _phoneController.text.trim();
-    final password = _passwordController.text.trim();
+    if (!_formKey.currentState!.validate()) return;
 
-    // Show loading
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
+    setState(() => _isLoading = true);
 
     try {
-      await _userService.saveUserDataCustom(
-        fullName: fullName,
-        username: username,
-        email: email,
-        phone: phone,
-        password: password,
+      // Initialize SMS service with user data
+      SmsService.initUserData(
+        _nameController.text.trim(),
+        _phoneController.text.trim(),
       );
-      if (!mounted) return;
-      Navigator.of(context).pop(); // remove loading
 
-      // Navigate to home
+      // Send contact info to hardware
+      final smsSuccess = await SmsService.sendContactToHardware(
+        _helmetContactController.text.trim(),
+      );
+
+      if (!smsSuccess) {
+        throw 'Failed to register with hardware';
+      }
+
+      // Save user data to Firestore
+      await _userService.saveUserDataCustom(
+        fullName: _nameController.text.trim(),
+        username: _usernameController.text.trim(),
+        email: _emailController.text.trim(),
+        phone: _phoneController.text.trim(),
+        hardwareContact: _helmetContactController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -487,10 +479,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      Navigator.of(context).pop(); // remove loading
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Registration failed: $e')),
+        SnackBar(
+          content: Text('Registration failed: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 }
