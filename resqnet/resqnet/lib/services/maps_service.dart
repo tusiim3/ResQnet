@@ -13,7 +13,7 @@ class MapsService {
     int radius = 5000,
     bool useCache = true,
   }) async {
-    final cacheKey = 'hospitals_${lat}_${lng}';
+    final cacheKey = 'hospitals_${lat}_$lng';
     
     if (useCache && 
         _cache.containsKey(cacheKey) && 

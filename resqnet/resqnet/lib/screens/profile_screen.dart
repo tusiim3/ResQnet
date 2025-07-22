@@ -5,16 +5,18 @@ import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+// Import Firestore
 import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
-import 'Login_Screen.dart';
+import 'Login_Screen.dart'; // Ensure this import path is correct
 import '../services/user_service.dart'; // Import your UserService
+
 
 class ProfileScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDarkTheme;
 
   const ProfileScreen({super.key, required this.toggleTheme, required this.isDarkTheme});
+
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -43,6 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
   bool _isLoadingProfile = true; // State to manage loading indicator
 
+
   @override
   void initState() {
     super.initState();
@@ -57,12 +60,14 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     super.dispose();
   }
 
+
   /// Initializes local notifications.
   Future<void> _initNotifications() async {
     const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
     const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
     await flutterLocalNotificationsPlugin.initialize(initializationSettings);
   }
+
 
   /// Shows a test notification to confirm notifications are enabled.
   Future<void> _showTestNotification() async {
@@ -83,6 +88,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     );
   }
 
+
   /// Toggles the notification setting and saves it to SharedPreferences.
   Future<void> _toggleNotifications() async {
     setState(() {
@@ -92,6 +98,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('notificationsEnabled', notificationsEnabled);
   }
+
 
   /// Toggles the location setting and requests permissions if needed.
   /// Saves the setting and current location to SharedPreferences.
@@ -138,11 +145,13 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     await prefs.setString('currentLocation', currentLocation);
   }
 
+
   /// Loads user profile data from Firestore and SharedPreferences.
   Future<void> _loadProfileData() async {
     setState(() {
       _isLoadingProfile = true; // Start loading
     });
+
 
     final User? user = _auth.currentUser;
     if (user != null) {
@@ -169,6 +178,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     });
   }
 
+
   /// Allows the user to pick a profile image from the gallery.
   Future<void> _pickImage() async {
     final picker = ImagePicker();
@@ -177,6 +187,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       setState(() => _profileImage = File(picked.path));
     }
   }
+
 
   /// Shows a dialog to edit profile information and saves changes to Firestore.
   void _editProfile() {
@@ -233,6 +244,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     );
   }
 
+
   /// Shows an about dialog for the application.
   void _showAbout() {
     showDialog(
@@ -245,6 +257,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     );
   }
 
+
   /// Shows a help and support dialog.
   void _showHelp() {
     showDialog(
@@ -256,6 +269,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       ),
     );
   }
+
 
   /// Helper widget to display an info card.
   Widget _infoCard(String title, String value) => Column(
@@ -293,7 +307,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     ),
                     TextSpan(
                       text: 'net',
-                      style: TextStyle(color: const Color(0xFF1976D2)),
+                      style: const TextStyle(color: Color(0xFF1976D2)),
                     ),
                   ],
                 ),
@@ -417,7 +431,16 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           ListTile(
             leading: const Icon(Icons.logout, color: Color(0xFFE74C3C)),
             title: const Text('Logout'),
-            onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme))),
+            onTap: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => LoginScreen( // Removed const
+                  toggleTheme: widget.toggleTheme,
+                  isDarkTheme: widget.isDarkTheme,
+                  smsPermissionGranted: false, // Added this, set to false or check actual status
+                ),
+              ),
+            ),
           ),
         ],
       );

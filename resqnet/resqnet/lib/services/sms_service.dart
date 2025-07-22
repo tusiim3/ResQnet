@@ -1,7 +1,6 @@
 import 'package:telephony/telephony.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class SmsService {
   static final Telephony telephony = Telephony.instance;
