@@ -21,10 +21,12 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
   final Completer<GoogleMapController> _controller = Completer();
   LatLng? _destination;
   bool _mapReady = false;
+  bool _isLoading = true;
+  String? _error;
 
   static const CameraPosition _initialPosition = CameraPosition(
     target: LatLng(0.315, 32.582), // Kampala coordinates
-    zoom: 13.0, // Safer zoom to prevent surface overload
+    zoom: 12.0, // Reduced zoom for better performance
   );
 
   @override
@@ -33,8 +35,19 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadDestinationFromSMS();
+    // Add delay to ensure proper initialization
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await _loadDestinationFromSMS();
+        setState(() {
+          _isLoading = false;
+        });
+      } catch (e) {
+        setState(() {
+          _error = 'Failed to load map data: $e';
+          _isLoading = false;
+        });
+      }
     });
   }
 
@@ -59,6 +72,7 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
   @override
   Widget build(BuildContext context) {
     super.build(context); // required for keep-alive
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Map View'),
@@ -69,24 +83,70 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
           ),
         ],
       ),
-      body: _mapReady
-          ? GoogleMap(
-              initialCameraPosition: _initialPosition,
-              myLocationEnabled: true,
-              onMapCreated: (GoogleMapController controller) {
-                _controller.complete(controller);
-              },
-              markers: _destination != null
-                  ? {
-                      Marker(
-                        markerId: const MarkerId('destination'),
-                        position: _destination!,
-                        infoWindow: const InfoWindow(title: "Emergency Location"),
-                      )
-                    }
-                  : {},
+      body: _isLoading
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading map...'),
+                ],
+              ),
             )
-          : const Center(child: CircularProgressIndicator()),
+          : _error != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error, size: 64, color: Colors.red),
+                      const SizedBox(height: 16),
+                      Text(_error!, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _error = null;
+                            _isLoading = true;
+                          });
+                          _loadDestinationFromSMS();
+                        },
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                )
+              : _mapReady
+                  ? GoogleMap(
+                      initialCameraPosition: _initialPosition,
+                      myLocationEnabled: true,
+                      myLocationButtonEnabled: true,
+                      zoomControlsEnabled: true,
+                      mapToolbarEnabled: false, // Reduces rendering overhead
+                      buildingsEnabled: false, // Reduces rendering complexity
+                      trafficEnabled: false, // Reduces data usage and rendering
+                      onMapCreated: (GoogleMapController controller) {
+                        if (!_controller.isCompleted) {
+                          _controller.complete(controller);
+                        }
+                      },
+                      markers: _destination != null
+                          ? {
+                              Marker(
+                                markerId: const MarkerId('destination'),
+                                position: _destination!,
+                                infoWindow: const InfoWindow(
+                                  title: "Emergency Location",
+                                  snippet: "Tap for more details",
+                                ),
+                                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+                              )
+                            }
+                          : {},
+                    )
+                  : const Center(
+                      child: Text('Map not ready'),
+                    ),
     );
   }
 }
