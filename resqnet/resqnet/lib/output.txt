@@ -92,44 +92,63 @@ class DefaultFirebaseOptions {
 
 ------lib\main.dart
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences/shared_preferences.dart';  // Fixed import line
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'services/sms_service.dart';
-import 'screens/login_screen.dart';
+import 'screens/Login_Screen.dart'; // Ensure this import path is correct
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Correct way to call static methods
-  await SmsService.loadTrustedNumberFromFirestore();
-  SmsService.initSmsListener();
+  // Initialize SMS services
+  bool smsPermissionCurrentlyGranted = false; // Default or check here if needed
+  try {
+    // You might want to check the actual permission status here
+    // for example: final status = await Permission.sms.status;
+    // smsPermissionCurrentlyGranted = status.isGranted;
+    await SmsService.loadTrustedNumberFromFirestore();
+    SmsService.initSmsListener();
+  } catch (e) {
+    print('Error initializing SMS services: $e');
+  }
 
   final prefs = await SharedPreferences.getInstance();
   final isDark = prefs.getBool('isDarkTheme') ?? false;
 
-  runApp(MyApp(isDarkTheme: isDark));
+  runApp(MyApp(isDarkTheme: isDark, smsPermissionGranted: smsPermissionCurrentlyGranted));
 }
 
 class MyApp extends StatelessWidget {
   final bool isDarkTheme;
-  
-  const MyApp({super.key, required this.isDarkTheme});
+  final bool smsPermissionGranted; // Added this parameter
+
+  const MyApp({super.key, required this.isDarkTheme, required this.smsPermissionGranted});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      // Consider setting themeMode based on isDarkTheme here
+      theme: ThemeData.light(),
+      darkTheme: ThemeData.dark(),
+      themeMode: isDarkTheme ? ThemeMode.dark : ThemeMode.light,
       home: LoginScreen(
-        toggleTheme: (bool isDark) {},
+        toggleTheme: (bool isDark) {
+          // This toggleTheme function currently does nothing in MyApp.
+          // You might want to pass it down to LoginScreen to actually change the theme.
+          // For now, it's a placeholder.
+        },
         isDarkTheme: isDarkTheme,
+        smsPermissionGranted: smsPermissionGranted,
       ),
     );
   }
 }
+
 ================================================================================
 
 ------lib\output.txt
@@ -1225,18 +1244,23 @@ class EmergencyContact {
 
 ------lib\screens\Login_Screen.dart
 import 'package:flutter/material.dart';
-//import 'package:resqnet/screens/alert_feed_screen.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:resqnet/screens/register_screen.dart';
 import 'package:resqnet/screens/Home_Screen.dart';
 import 'package:resqnet/services/user_service.dart';
+import 'package:resqnet/services/sms_service.dart';
+
 
 class LoginScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDarkTheme;
+  final bool smsPermissionGranted; // Keep this as a required parameter
+
   const LoginScreen({
     super.key,
     required this.toggleTheme,
     required this.isDarkTheme,
+    required this.smsPermissionGranted, // This parameter is required
   });
 
   @override
@@ -1245,14 +1269,24 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  // final _usernameController = TextEditingController();
-  //   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _rememberMe = false;
   bool _obscurePassword = true;
+  bool _showPermissionWarning = false;
 
   final UserService _userService = UserService();
+
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.smsPermissionGranted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() => _showPermissionWarning = true);
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -1261,297 +1295,350 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  Future<void> _requestSmsPermissions() async {
+    final status = await Permission.sms.request();
+    if (status.isGranted) {
+      setState(() => _showPermissionWarning = false);
+      await SmsService.loadTrustedNumberFromFirestore();
+      SmsService.initSmsListener();
+    } else if (status.isPermanentlyDenied) {
+      await openAppSettings();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-
+      backgroundColor: Colors.white, // Consider using Theme.of(context).scaffoldBackgroundColor
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 80),
-                      //Logo
-                      Center(
-                        child: Container(
-                          padding: const EdgeInsets.only(bottom: 15),
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Color(0xFFFF6B6B), Color(0xFFFF8E8E)],
-                            ),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              '🏍️',
-                              style: TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
+        child: Stack(
+          children: [
+            SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_showPermissionWarning) ...[
+                      _buildPermissionWarning(),
+                      const SizedBox(height: 20),
+                    ],
+                    Form(
+                      key: _formKey,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const SizedBox(height: 80),
+                          //Logo
+                          Center(
+                            child: Container(
+                              padding: const EdgeInsets.only(bottom: 15),
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [Color(0xFFFF6B6B), Color(0xFFFF8E8E)],
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  '🏍️',
+                                  style: TextStyle(
+                                    fontSize: 40,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                      SizedBox(height: 20),
-                      //App Title
-                      const Text(
-                        'ResQnet',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF2C3E50),
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: 10),
-                      //Subtitle
-                      const Text(
-                        'Stay Protected, Stay Connected',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w400,
-                          color: Color(0xFF7F8C8D),
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: 40),
-                      //Phone Number Field
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                          const SizedBox(height: 20),
+                          //App Title
                           const Text(
-                            'Phone Number',
+                            'ResQnet',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF2C3E50), // Consider using Theme.of(context).textTheme
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 10),
+                          //Subtitle
+                          const Text(
+                            'Stay Protected, Stay Connected',
                             style: TextStyle(
                               fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF2C3E50),
+                              fontWeight: FontWeight.w400,
+                              color: Color(0xFF7F8C8D), // Consider using Theme.of(context).textTheme
                             ),
+                            textAlign: TextAlign.center,
                           ),
-                          const SizedBox(height: 8),
-                          TextFormField(
-                            controller: _phoneController,
-                            keyboardType: TextInputType.phone,
-                            decoration: InputDecoration(
-                              hintText: '+256 700 000 000',
-                              labelText: 'Phone Number',
-                              filled: true,
-                              fillColor: Colors.white,
-                              prefixIcon: Icon(Icons.phone),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(
-                                  color: Color(0xFFE8E8E8),
-                                  width: 2,
+                          const SizedBox(height: 40),
+                          //Phone Number Field
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Phone Number',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF2C3E50), // Consider using Theme.of(context).textTheme
                                 ),
                               ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFFE8E8E8),
-                                  width: 2,
+                              const SizedBox(height: 8),
+                              TextFormField( // Removed const
+                                controller: _phoneController,
+                                keyboardType: TextInputType.phone,
+                                decoration: InputDecoration(
+                                  hintText: '+256 700 000 000',
+                                  labelText: 'Phone Number',
+                                  filled: true,
+                                  fillColor: Colors.white, // Consider using Theme.of(context).inputDecorationTheme
+                                  prefixIcon: const Icon(Icons.phone),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFE8E8E8),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFE8E8E8),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFF4A90E2),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  contentPadding: const EdgeInsets.all(15),
                                 ),
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please enter your phone number';
+                                  }
+                                  return null;
+                                },
                               ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFF4A90E2),
-                                  width: 2,
-                                ),
-                              ),
-                              contentPadding: const EdgeInsets.all(15),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter your phone number';
-                              }
-                              return null;
-                            },
+                            ],
                           ),
-                        ],
-                      ),
-                      SizedBox(height: 20),
-
-                      
-                      //Password field
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Password',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF2C3E50),
-                            ),
+                          const SizedBox(height: 20),
+                          //Password field
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Password',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF2C3E50), // Consider using Theme.of(context).textTheme
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextFormField( // Removed const
+                                controller: _passwordController,
+                                decoration: InputDecoration(
+                                  hintText: 'Enter your password',
+                                  labelText: 'Password',
+                                  filled: true,
+                                  fillColor: Colors.white, // Consider using Theme.of(context).inputDecorationTheme
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFE8E8E8),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFE8E8E8),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFF4A90E2),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  errorBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFC40C0C),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  prefixIcon: const Icon(Icons.lock),
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      _obscurePassword
+                                          ? Icons.visibility_off
+                                          : Icons.visibility,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _obscurePassword = !_obscurePassword;
+                                      });
+                                    },
+                                  ),
+                                  contentPadding: const EdgeInsets.all(15),
+                                ),
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please enter your password';
+                                  }
+                                  return null;
+                                },
+                                obscureText: _obscurePassword,
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 8),
-                          TextFormField(
-                            controller: _passwordController,
-                            decoration: InputDecoration(
-                              hintText: 'Enter your password',
-                              labelText: 'Password',
-                              filled: true,
-                              fillColor: Colors.white,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFFE8E8E8),
-                                  width: 2,
-                                ),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFFE8E8E8),
-                                  width: 2,
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFF4A90E2),
-                                  width: 2,
-                                ),
-                              ),
-                              errorBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFFC40C0C),
-                                  width: 2,
-                                ),
-                              ),
-                              prefixIcon: Icon(Icons.lock),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_off
-                                      : Icons.visibility,
-                                ),
-                                onPressed: () {
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Checkbox(
+                                value: _rememberMe,
+                                onChanged: (value) {
                                   setState(() {
-                                    _obscurePassword = !_obscurePassword;
+                                    _rememberMe = value!;
                                   });
                                 },
                               ),
-                              contentPadding: const EdgeInsets.all(15),
+                              const Text('Remember Me'),
+                              const Spacer(),
+                              TextButton(
+                                onPressed: () {
+                                  _showForgotPasswordDialog();
+                                },
+                                child: const Text('Forgot Password?'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          // Login Button
+                          Container(
+                            width: double.infinity,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [Color(0xFFFF6B6B), Color(0xFFFF8E8E)],
+                              ),
+                              borderRadius: BorderRadius.circular(10),
                             ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter your password';
-                              }
-                              return null;
-                            },
-                            obscureText: _obscurePassword,
+                            child: ElevatedButton(
+                              onPressed: () {
+                                if (_formKey.currentState!.validate()) {
+                                  _handleLogin();
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                minimumSize: const Size(double.infinity, 50),
+                                backgroundColor: Colors.transparent, // Button background color
+                                shadowColor: Colors.transparent, // No shadow
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text(
+                                'Login',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
                           ),
-                        ],
-                      ),
-                      SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Checkbox(
-                            value: _rememberMe,
-                            onChanged: (value) {
-                              setState(() {
-                                _rememberMe = value!;
-                              });
-                            },
-                          ),
-                          Text('Remember Me'),
-                          Spacer(),
+                          const SizedBox(height: 20),
+                          //Create Account Link
                           TextButton(
                             onPressed: () {
-                              _showForgotPasswordDialog();
-                            },
-                            child: Text('Forgot Password?'),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: 20),
-
-                      // Login Button
-                      Container(
-                        width: double.infinity,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFFFF6B6B), Color(0xFFFF8E8E)],
-                          ),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: ElevatedButton(
-                          onPressed: () {
-                            if (_formKey.currentState!.validate()) {
-                              // Handle login logic here
-                              _handleLogin();
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            minimumSize: Size(double.infinity, 50),
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Text(
-                            'Login',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 20),
-
-                      //Create Account Link
-                      TextButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (context) => RegisterScreen(
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => RegisterScreen( // Removed const
                                     toggleTheme: widget.toggleTheme,
                                     isDarkTheme: widget.isDarkTheme,
                                   ),
+                                ),
+                              );
+                            },
+                            child: const Text(
+                              'Sign up, Create Account',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF4A90E2),
+                              ),
                             ),
-                          );
-                        },
-                        child: Text(
-                          'Sign up, Create Account',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF4A90E2),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPermissionWarning() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange[50],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.warning, color: Colors.orange[800]),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'SMS Permissions Required',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange[800]),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Enable SMS permissions for emergency alerts',
+                  style: TextStyle(color: Colors.orange[800]),
                 ),
               ],
             ),
           ),
-        ),
+          TextButton(
+            onPressed: _requestSmsPermissions,
+            child: Text(
+              'ENABLE',
+              style: TextStyle(color: Colors.orange[800]),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1559,17 +1646,16 @@ class _LoginScreenState extends State<LoginScreen> {
   void _showForgotPasswordDialog() {
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('Forgot Password'),
-            content: Text('Password reset link will be sent to your email.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('OK'),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: const Text('Forgot Password'),
+        content: const Text('Password reset link will be sent to your email.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
           ),
+        ],
+      ),
     );
   }
 
@@ -1577,46 +1663,43 @@ class _LoginScreenState extends State<LoginScreen> {
     final phone = _phoneController.text.trim();
     final password = _passwordController.text.trim();
 
-    // Show loading indicator
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => Center(child: CircularProgressIndicator()),
+      builder: (context) => const Center(child: CircularProgressIndicator()),
     );
 
     try {
       final userData = await _userService.getUserByPhone(phone);
-      Navigator.of(context).pop(); // Remove loading indicator
+      Navigator.of(context).pop();
 
       if (userData == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No user found with this phone number.')),
+          const SnackBar(content: Text('No user found with this phone number.')),
         );
         return;
       }
 
       if (userData['password'] == password) {
-        // In production, use hashed passwords!
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder:
-                (context) => HomeScreen(
-                  toggleTheme: widget.toggleTheme,
-                  isDarkTheme: widget.isDarkTheme,
-                ),
+            builder: (context) => HomeScreen( // Removed const
+              toggleTheme: widget.toggleTheme,
+              isDarkTheme: widget.isDarkTheme,
+            ),
           ),
         );
       } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Incorrect password.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Incorrect password.')),
+        );
       }
     } catch (e) {
-      Navigator.of(context).pop(); // Remove loading indicator
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Login failed: $e')));
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Login failed: $e')),
+      );
     }
   }
 }
@@ -1727,16 +1810,18 @@ import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+// Import Firestore
 import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
-import 'Login_Screen.dart';
+import 'Login_Screen.dart'; // Ensure this import path is correct
 import '../services/user_service.dart'; // Import your UserService
+
 
 class ProfileScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDarkTheme;
 
   const ProfileScreen({super.key, required this.toggleTheme, required this.isDarkTheme});
+
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -1765,6 +1850,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
   bool _isLoadingProfile = true; // State to manage loading indicator
 
+
   @override
   void initState() {
     super.initState();
@@ -1779,12 +1865,14 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     super.dispose();
   }
 
+
   /// Initializes local notifications.
   Future<void> _initNotifications() async {
     const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
     const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
     await flutterLocalNotificationsPlugin.initialize(initializationSettings);
   }
+
 
   /// Shows a test notification to confirm notifications are enabled.
   Future<void> _showTestNotification() async {
@@ -1805,6 +1893,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     );
   }
 
+
   /// Toggles the notification setting and saves it to SharedPreferences.
   Future<void> _toggleNotifications() async {
     setState(() {
@@ -1814,6 +1903,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('notificationsEnabled', notificationsEnabled);
   }
+
 
   /// Toggles the location setting and requests permissions if needed.
   /// Saves the setting and current location to SharedPreferences.
@@ -1860,11 +1950,13 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     await prefs.setString('currentLocation', currentLocation);
   }
 
+
   /// Loads user profile data from Firestore and SharedPreferences.
   Future<void> _loadProfileData() async {
     setState(() {
       _isLoadingProfile = true; // Start loading
     });
+
 
     final User? user = _auth.currentUser;
     if (user != null) {
@@ -1891,6 +1983,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     });
   }
 
+
   /// Allows the user to pick a profile image from the gallery.
   Future<void> _pickImage() async {
     final picker = ImagePicker();
@@ -1899,6 +1992,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       setState(() => _profileImage = File(picked.path));
     }
   }
+
 
   /// Shows a dialog to edit profile information and saves changes to Firestore.
   void _editProfile() {
@@ -1955,6 +2049,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     );
   }
 
+
   /// Shows an about dialog for the application.
   void _showAbout() {
     showDialog(
@@ -1967,6 +2062,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     );
   }
 
+
   /// Shows a help and support dialog.
   void _showHelp() {
     showDialog(
@@ -1978,6 +2074,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       ),
     );
   }
+
 
   /// Helper widget to display an info card.
   Widget _infoCard(String title, String value) => Column(
@@ -2015,7 +2112,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     ),
                     TextSpan(
                       text: 'net',
-                      style: TextStyle(color: const Color(0xFF1976D2)),
+                      style: const TextStyle(color: Color(0xFF1976D2)),
                     ),
                   ],
                 ),
@@ -2139,7 +2236,16 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           ListTile(
             leading: const Icon(Icons.logout, color: Color(0xFFE74C3C)),
             title: const Text('Logout'),
-            onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme))),
+            onTap: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => LoginScreen( // Removed const
+                  toggleTheme: widget.toggleTheme,
+                  isDarkTheme: widget.isDarkTheme,
+                  smsPermissionGranted: false, // Added this, set to false or check actual status
+                ),
+              ),
+            ),
           ),
         ],
       );
@@ -2871,7 +2977,7 @@ class MapsService {
     int radius = 5000,
     bool useCache = true,
   }) async {
-    final cacheKey = 'hospitals_${lat}_${lng}';
+    final cacheKey = 'hospitals_${lat}_$lng';
     
     if (useCache && 
         _cache.containsKey(cacheKey) && 
@@ -2950,7 +3056,6 @@ class MapsService {
 import 'package:telephony/telephony.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class SmsService {
   static final Telephony telephony = Telephony.instance;
