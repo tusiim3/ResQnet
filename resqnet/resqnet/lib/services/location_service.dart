@@ -1,10 +1,64 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'dart:math';
+import '../config/api_config.dart';
 
 class LocationService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Get current GPS location
+  static Future<LatLng?> getCurrentGPSLocation() async {
+    try {
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        return null;
+      }
+
+      // Check permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          return null;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        return null;
+      }
+
+      // Get current position
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      return LatLng(position.latitude, position.longitude);
+    } catch (e) {
+      print('Error getting GPS location: $e');
+      return null;
+    }
+  }
+
+  // Move camera to user's location
+  static Future<void> centerMapOnUserLocation(GoogleMapController controller) async {
+    LatLng? userLocation = await getCurrentGPSLocation();
+    if (userLocation != null) {
+      await controller.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: userLocation,
+            zoom: 16.0, // Good zoom level for user location
+          ),
+        ),
+      );
+    }
+  }
 
   // Save real-time location from helmet
   Future<void> saveLocation({
@@ -144,6 +198,115 @@ class LocationService {
     }
 
     return nearbyRiders;
+  }
+
+  // Find nearest hospital based on emergency location using Google Places API
+  static Future<Map<String, dynamic>?> findNearestHospital(double emergencyLat, double emergencyLng) async {
+    try {
+      final String apiKey = ApiConfig.googleMapsApiKey;
+      final String url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
+          '?location=$emergencyLat,$emergencyLng'
+          '&radius=10000' // 10km radius
+          '&type=hospital'
+          '&key=$apiKey';
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final results = data['results'] as List;
+
+        if (results.isEmpty) {
+          print('No hospitals found nearby');
+          return null;
+        }
+
+        Map<String, dynamic>? nearestHospital;
+        double shortestDistance = double.infinity;
+
+        // Find the closest hospital
+        for (var place in results) {
+          final geometry = place['geometry'];
+          final location = geometry['location'];
+          final lat = location['lat'].toDouble();
+          final lng = location['lng'].toDouble();
+
+          double distance = _calculateDistanceStatic(
+            emergencyLat,
+            emergencyLng,
+            lat,
+            lng,
+          );
+
+          if (distance < shortestDistance) {
+            shortestDistance = distance;
+            
+            // Get additional details for the hospital
+            String? phoneNumber = await _getPlacePhone(place['place_id'], apiKey);
+            
+            nearestHospital = {
+              'name': place['name'] ?? 'Unknown Hospital',
+              'latitude': lat,
+              'longitude': lng,
+              'phone': phoneNumber ?? 'Phone not available',
+              'emergency': phoneNumber ?? 'Emergency contact not available',
+              'distance': distance,
+              'address': place['vicinity'] ?? 'Address not available',
+              'rating': place['rating']?.toDouble() ?? 0.0,
+              'place_id': place['place_id'],
+            };
+          }
+        }
+
+        return nearestHospital;
+      } else {
+        print('Error fetching hospitals: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Error finding nearest hospital: $e');
+      return null;
+    }
+  }
+
+  // Get phone number for a specific place
+  static Future<String?> _getPlacePhone(String placeId, String apiKey) async {
+    try {
+      final String url = 'https://maps.googleapis.com/maps/api/place/details/json'
+          '?place_id=$placeId'
+          '&fields=formatted_phone_number'
+          '&key=$apiKey';
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final result = data['result'];
+        return result['formatted_phone_number'] as String?;
+      }
+    } catch (e) {
+      print('Error getting place phone: $e');
+    }
+    return null;
+  }
+
+  // Static version of distance calculation for use in static methods
+  static double _calculateDistanceStatic(double lat1, double lng1, double lat2, double lng2) {
+    const double earthRadius = 6371; // km
+    final double dLat = _toRadiansStatic(lat2 - lat1);
+    final double dLng = _toRadiansStatic(lng2 - lng1);
+
+    final double a =
+        sin(dLat / 2) * sin(dLat / 2) +
+            cos(_toRadiansStatic(lat1)) * cos(_toRadiansStatic(lat2)) *
+                sin(dLng / 2) * sin(dLng / 2);
+
+    final double c = 2 * asin(sqrt(a));
+    return earthRadius * c;
+  }
+
+  static double _toRadiansStatic(double degrees) {
+    return degrees * (pi / 180);
   }
 
   double _calculateDistance(double lat1, double lng1, double lat2, double lng2) {

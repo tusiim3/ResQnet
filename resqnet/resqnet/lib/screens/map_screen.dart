@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/location_service.dart';
 
 class MapScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
@@ -20,11 +21,15 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixin {
   final Completer<GoogleMapController> _controller = Completer();
   LatLng? _destination;
+  LatLng? _userLocation;
   bool _mapReady = false;
+  bool _isLoading = true;
+  String? _error;
 
-  static const CameraPosition _initialPosition = CameraPosition(
-    target: LatLng(0.315, 32.582), // Kampala coordinates
-    zoom: 13.0, // Safer zoom to prevent surface overload
+  // Use user's location as initial position, fallback to Kampala
+  CameraPosition _initialPosition = const CameraPosition(
+    target: LatLng(0.315, 32.582), // Kampala coordinates (fallback)
+    zoom: 12.0,
   );
 
   @override
@@ -33,9 +38,36 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadDestinationFromSMS();
+    // Get user location and load map data
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await _initializeMap();
+        setState(() {
+          _isLoading = false;
+        });
+      } catch (e) {
+        setState(() {
+          _error = 'Failed to load map data: $e';
+          _isLoading = false;
+        });
+      }
     });
+  }
+
+  Future<void> _initializeMap() async {
+    // Get user's current GPS location
+    _userLocation = await LocationService.getCurrentGPSLocation();
+    
+    // If we got user location, update initial position
+    if (_userLocation != null) {
+      _initialPosition = CameraPosition(
+        target: _userLocation!,
+        zoom: 16.0, // Closer zoom for user location
+      );
+    }
+
+    // Load destination from SMS
+    await _loadDestinationFromSMS();
   }
 
   Future<void> _loadDestinationFromSMS() async {
@@ -59,6 +91,7 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
   @override
   Widget build(BuildContext context) {
     super.build(context); // required for keep-alive
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Map View'),
@@ -69,24 +102,82 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
           ),
         ],
       ),
-      body: _mapReady
-          ? GoogleMap(
-              initialCameraPosition: _initialPosition,
-              myLocationEnabled: true,
-              onMapCreated: (GoogleMapController controller) {
-                _controller.complete(controller);
-              },
-              markers: _destination != null
-                  ? {
-                      Marker(
-                        markerId: const MarkerId('destination'),
-                        position: _destination!,
-                        infoWindow: const InfoWindow(title: "Emergency Location"),
-                      )
-                    }
-                  : {},
+      body: _isLoading
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading map...'),
+                ],
+              ),
             )
-          : const Center(child: CircularProgressIndicator()),
+          : _error != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error, size: 64, color: Colors.red),
+                      const SizedBox(height: 16),
+                      Text(_error!, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _error = null;
+                            _isLoading = true;
+                          });
+                          _loadDestinationFromSMS();
+                        },
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                )
+              : _mapReady
+                  ? GoogleMap(
+                      initialCameraPosition: _initialPosition,
+                      myLocationEnabled: true,
+                      myLocationButtonEnabled: true,
+                      zoomControlsEnabled: true,
+                      mapToolbarEnabled: false,
+                      buildingsEnabled: false,
+                      trafficEnabled: false,
+                      onMapCreated: (GoogleMapController controller) async {
+                        if (!_controller.isCompleted) {
+                          _controller.complete(controller);
+                          
+                          // Center map on user location once controller is ready
+                          if (_userLocation != null) {
+                            await controller.animateCamera(
+                              CameraUpdate.newCameraPosition(
+                                CameraPosition(
+                                  target: _userLocation!,
+                                  zoom: 16.0,
+                                ),
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      markers: _destination != null
+                          ? {
+                              Marker(
+                                markerId: const MarkerId('destination'),
+                                position: _destination!,
+                                infoWindow: const InfoWindow(
+                                  title: "Emergency Location",
+                                  snippet: "Tap for more details",
+                                ),
+                                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+                              )
+                            }
+                          : {},
+                    )
+                  : const Center(
+                      child: Text('Map not ready'),
+                    ),
     );
   }
 }

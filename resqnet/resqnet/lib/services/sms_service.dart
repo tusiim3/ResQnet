@@ -2,6 +2,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:telephony/telephony.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'location_service.dart';
+import '../config/api_config.dart';
 
 class SmsService {
   static final Telephony telephony = Telephony.instance;
@@ -106,21 +110,74 @@ class SmsService {
         message.body?.toLowerCase().contains('user needs help') == true) {
       print("🚨 Emergency SMS detected!");
       await _handleEmergencyRequest(message.address!);
-    } else {
-      print("📭 SMS ignored: not from trusted hardware or unrecognized message.");
     }
+  }
+
+  // Reverse geocoding to get address from emergency location coordinates
+  static Future<String> _getAddressFromCoordinates(double emergencyLat, double emergencyLng) async {
+    try {
+      final String apiKey = ApiConfig.googleMapsApiKey;
+      final String url = 'https://maps.googleapis.com/maps/api/geocode/json'
+          '?latlng=$emergencyLat,$emergencyLng'
+          '&key=$apiKey';
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final results = data['results'] as List;
+
+        if (results.isNotEmpty) {
+          return results[0]['formatted_address'] as String;
+        }
+      }
+    } catch (e) {
+      print('Error getting address from emergency location: $e');
+    }
+    
+    // Fallback if reverse geocoding fails
+    return 'Unknown emergency location';
   }
 
   // Handle emergency
   static Future<void> _handleEmergencyRequest(String sender) async {
     try {
+      // Get emergency location GPS position
       final position = await _getCurrentPosition();
+      
+      // Find nearest hospital from emergency location
+      final hospital = await LocationService.findNearestHospital(
+        position.latitude, 
+        position.longitude
+      );
+      
+      // Get readable address from emergency location coordinates
+      final address = await _getAddressFromCoordinates(
+        position.latitude, 
+        position.longitude
+      );
+      
+      // Format the emergency message
+      String emergencyMessage = 'Emergency at: $address (${position.latitude}, ${position.longitude})';
+      
+      if (hospital != null) {
+        emergencyMessage += ', Contact: ${hospital['name']}, ${hospital['emergency']}';
+      } else {
+        emergencyMessage += ', Contact: No nearby hospital found, call 911';
+      }
+      
+      // Send formatted emergency SMS
+      await sendSms(sender, emergencyMessage);
+      
+      print('Emergency SMS sent: $emergencyMessage');
       final response = 'Emergency response started. Location: '
           'Lat: ${position.latitude}, Lng: ${position.longitude}';
 
       await sendSms(sender, response);
     } catch (e) {
-      print('❌ Error handling emergency: $e');
+      print('Error handling emergency: $e');
+      // Send basic response if everything fails
+      await sendSms(sender, 'Emergency detected - Unable to get location details');
     }
   }
 
