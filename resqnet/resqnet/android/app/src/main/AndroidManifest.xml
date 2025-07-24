@@ -6,6 +6,15 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    
+    <!-- For Android 10+ -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
+
     <application
         android:label="ResQnet"
         android:name="${applicationName}"
@@ -15,6 +24,10 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyCGYjT7qcHOVr8NXJ0Y_d0dRRICLkMnan0"/>
+
+        <meta-data
+            android:name="com.google.android.gms.maps.API_KEY"
+            android:value="YOUR_MAP_ID_HERE"/>
 
         <activity
             android:name=".MainActivity"
