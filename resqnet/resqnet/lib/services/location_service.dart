@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:math';
+import '../config/api_config.dart';
 
 class LocationService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -199,74 +200,94 @@ class LocationService {
     return nearbyRiders;
   }
 
-  // Find nearest hospital based on emergency location
+  // Find nearest hospital based on emergency location using Google Places API
   static Future<Map<String, dynamic>?> findNearestHospital(double emergencyLat, double emergencyLng) async {
     try {
-      // Since this is a demo, a simple list of Uganda hospital. In production, we'd use Google Places API
-      final List<Map<String, dynamic>> hospitals = [
-        {
-          'name': 'Mulago National Referral Hospital',
-          'latitude': 0.3354,
-          'longitude': 32.5825,
-          'phone': '+256414530692',
-          'emergency': '+256414530020'
-        },
-        {
-          'name': 'Kampala Hospital',
-          'latitude': 0.3476,
-          'longitude': 32.5825,
-          'phone': '+256312200400',
-          'emergency': '+256312200400'
-        },
-        {
-          'name': 'Case Hospital',
-          'latitude': 0.3420,
-          'longitude': 32.5947,
-          'phone': '+256414258100',
-          'emergency': '+256414258100'
-        },
-        {
-          'name': 'Nakasero Hospital',
-          'latitude': 0.3215,
-          'longitude': 32.5779,
-          'phone': '+256312531000',
-          'emergency': '+256312531000'
-        },
-        {
-          'name': 'International Hospital Kampala',
-          'latitude': 0.3567,
-          'longitude': 32.6032,
-          'phone': '+256312200400',
-          'emergency': '+256312200999'
+      final String apiKey = ApiConfig.googleMapsApiKey;
+      final String url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
+          '?location=$emergencyLat,$emergencyLng'
+          '&radius=10000' // 10km radius
+          '&type=hospital'
+          '&key=$apiKey';
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final results = data['results'] as List;
+
+        if (results.isEmpty) {
+          print('No hospitals found nearby');
+          return null;
         }
-      ];
 
-      Map<String, dynamic>? nearestHospital;
-      double shortestDistance = double.infinity;
+        Map<String, dynamic>? nearestHospital;
+        double shortestDistance = double.infinity;
 
-      // Find the closest hospital
-      for (var hospital in hospitals) {
-        double distance = _calculateDistanceStatic(
-          emergencyLat,
-          emergencyLng,
-          hospital['latitude'],
-          hospital['longitude'],
-        );
+        // Find the closest hospital
+        for (var place in results) {
+          final geometry = place['geometry'];
+          final location = geometry['location'];
+          final lat = location['lat'].toDouble();
+          final lng = location['lng'].toDouble();
 
-        if (distance < shortestDistance) {
-          shortestDistance = distance;
-          nearestHospital = {
-            ...hospital,
-            'distance': distance,
-          };
+          double distance = _calculateDistanceStatic(
+            emergencyLat,
+            emergencyLng,
+            lat,
+            lng,
+          );
+
+          if (distance < shortestDistance) {
+            shortestDistance = distance;
+            
+            // Get additional details for the hospital
+            String? phoneNumber = await _getPlacePhone(place['place_id'], apiKey);
+            
+            nearestHospital = {
+              'name': place['name'] ?? 'Unknown Hospital',
+              'latitude': lat,
+              'longitude': lng,
+              'phone': phoneNumber ?? 'Phone not available',
+              'emergency': phoneNumber ?? 'Emergency contact not available',
+              'distance': distance,
+              'address': place['vicinity'] ?? 'Address not available',
+              'rating': place['rating']?.toDouble() ?? 0.0,
+              'place_id': place['place_id'],
+            };
+          }
         }
+
+        return nearestHospital;
+      } else {
+        print('Error fetching hospitals: ${response.statusCode}');
+        return null;
       }
-
-      return nearestHospital;
     } catch (e) {
       print('Error finding nearest hospital: $e');
       return null;
     }
+  }
+
+  // Get phone number for a specific place
+  static Future<String?> _getPlacePhone(String placeId, String apiKey) async {
+    try {
+      final String url = 'https://maps.googleapis.com/maps/api/place/details/json'
+          '?place_id=$placeId'
+          '&fields=formatted_phone_number'
+          '&key=$apiKey';
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final result = data['result'];
+        return result['formatted_phone_number'] as String?;
+      }
+    } catch (e) {
+      print('Error getting place phone: $e');
+    }
+    return null;
   }
 
   // Static version of distance calculation for use in static methods
