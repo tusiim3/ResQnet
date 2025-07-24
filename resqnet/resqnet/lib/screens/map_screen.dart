@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/location_service.dart';
 
 class MapScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
@@ -20,13 +21,15 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixin {
   final Completer<GoogleMapController> _controller = Completer();
   LatLng? _destination;
+  LatLng? _userLocation;
   bool _mapReady = false;
   bool _isLoading = true;
   String? _error;
 
-  static const CameraPosition _initialPosition = CameraPosition(
-    target: LatLng(0.315, 32.582), // Kampala coordinates
-    zoom: 12.0, // Reduced zoom for better performance
+  // Use user's location as initial position, fallback to Kampala
+  CameraPosition _initialPosition = const CameraPosition(
+    target: LatLng(0.315, 32.582), // Kampala coordinates (fallback)
+    zoom: 12.0,
   );
 
   @override
@@ -35,10 +38,10 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
   @override
   void initState() {
     super.initState();
-    // Add delay to ensure proper initialization
+    // Get user location and load map data
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
-        await _loadDestinationFromSMS();
+        await _initializeMap();
         setState(() {
           _isLoading = false;
         });
@@ -49,6 +52,22 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
         });
       }
     });
+  }
+
+  Future<void> _initializeMap() async {
+    // Get user's current GPS location
+    _userLocation = await LocationService.getCurrentGPSLocation();
+    
+    // If we got user location, update initial position
+    if (_userLocation != null) {
+      _initialPosition = CameraPosition(
+        target: _userLocation!,
+        zoom: 16.0, // Closer zoom for user location
+      );
+    }
+
+    // Load destination from SMS
+    await _loadDestinationFromSMS();
   }
 
   Future<void> _loadDestinationFromSMS() async {
@@ -122,12 +141,24 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
                       myLocationEnabled: true,
                       myLocationButtonEnabled: true,
                       zoomControlsEnabled: true,
-                      mapToolbarEnabled: false, // Reduces rendering overhead
-                      buildingsEnabled: false, // Reduces rendering complexity
-                      trafficEnabled: false, // Reduces data usage and rendering
-                      onMapCreated: (GoogleMapController controller) {
+                      mapToolbarEnabled: false,
+                      buildingsEnabled: false,
+                      trafficEnabled: false,
+                      onMapCreated: (GoogleMapController controller) async {
                         if (!_controller.isCompleted) {
                           _controller.complete(controller);
+                          
+                          // Center map on user location once controller is ready
+                          if (_userLocation != null) {
+                            await controller.animateCamera(
+                              CameraUpdate.newCameraPosition(
+                                CameraPosition(
+                                  target: _userLocation!,
+                                  zoom: 16.0,
+                                ),
+                              ),
+                            );
+                          }
                         }
                       },
                       markers: _destination != null
