@@ -4,18 +4,18 @@ class UserService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // Get user by phone number
-  Future<Map<String, dynamic>?> getUserByPhone(String phone) async {
+  Future<DocumentSnapshot?> getUserByPhone(String phone) async {
     final query = await _db
         .collection('users')
         .where('phone', isEqualTo: phone)
         .limit(1)
         .get();
     if (query.docs.isNotEmpty) {
-      // Return the data of the first document found
-      return query.docs.first.data();
+      // Return the first document snapshot found
+      return query.docs.first;
     }
     return null;
-  }
+}
 
   // Get user data by User ID (UID)
   // This is crucial for fetching the currently logged-in user's profile information.

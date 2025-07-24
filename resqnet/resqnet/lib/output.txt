@@ -95,7 +95,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';  // Fixed import line
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'services/sms_service.dart';
 import 'screens/Login_Screen.dart'; // Ensure this import path is correct
 
 Future<void> main() async {
@@ -107,16 +106,6 @@ Future<void> main() async {
 
   // Initialize SMS services
   bool smsPermissionCurrentlyGranted = false; // Default or check here if needed
-  try {
-    // You might want to check the actual permission status here
-    // for example: final status = await Permission.sms.status;
-    // smsPermissionCurrentlyGranted = status.isGranted;
-    await SmsService.loadTrustedNumberFromFirestore();
-    SmsService.initSmsListener();
-  } catch (e) {
-    print('Error initializing SMS services: $e');
-  }
-
   final prefs = await SharedPreferences.getInstance();
   final isDark = prefs.getBool('isDarkTheme') ?? false;
 
@@ -220,30 +209,35 @@ import '../services/sms_service.dart';
 class SmsController {
   final Telephony telephony = Telephony.instance;
 
-  void handleIncomingSms(SmsMessage message) {
+  // Handle a manually triggered incoming SMS
+  Future<void> handleIncomingSms(SmsMessage message) async {
     final sender = message.address ?? "";
     final body = message.body ?? "";
 
-    // Use the static getter from SmsService
-    final String? trustedHardwareContact = SmsService.hardwareContact;
+    // Ensure trusted contact is loaded
+    String? trustedHardwareContact = SmsService.hardwareContact;
 
-    print("Incoming SMS from: $sender, Body: $body");
-    print("Expected trusted hardware contact: $trustedHardwareContact");
+    print("📨 Manual SMS check - From: $sender, Body: $body");
+    print("🔐 Trusted hardware contact: $trustedHardwareContact");
 
     if (trustedHardwareContact != null && sender == trustedHardwareContact) {
       doCustomTask(body);
-      // Use the static sendSms method
-      SmsService.sendSms(sender, "Task completed successfully!");
+
+      final success = await SmsService.sendSms(sender, "✅ Task completed successfully!");
+      if (!success) {
+        print("⚠️ Failed to send confirmation SMS.");
+      }
     } else {
-      print("Unauthorized SMS access attempt from: $sender");
+      print("🚫 Unauthorized SMS access attempt from: $sender");
     }
   }
 
   void doCustomTask(String body) {
-    print("Received message for custom task: '$body'");
-    print("Performing custom task logic...");
+    print("🛠️ Performing custom task based on message: '$body'");
+    // Your custom logic here (e.g., command parsing)
   }
 }
+
 ================================================================================
 
 ------lib\models\location_model.dart
@@ -1249,6 +1243,7 @@ import 'package:resqnet/screens/register_screen.dart';
 import 'package:resqnet/screens/Home_Screen.dart';
 import 'package:resqnet/services/user_service.dart';
 import 'package:resqnet/services/sms_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 
 class LoginScreen extends StatefulWidget {
@@ -1299,8 +1294,6 @@ class _LoginScreenState extends State<LoginScreen> {
     final status = await Permission.sms.request();
     if (status.isGranted) {
       setState(() => _showPermissionWarning = false);
-      await SmsService.loadTrustedNumberFromFirestore();
-      SmsService.initSmsListener();
     } else if (status.isPermanentlyDenied) {
       await openAppSettings();
     }
@@ -1670,17 +1663,35 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     try {
-      final userData = await _userService.getUserByPhone(phone);
+      final userSnapshot = await _userService.getUserByPhone(phone);
       Navigator.of(context).pop();
 
-      if (userData == null) {
+      if (userSnapshot == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No user found with this phone number.')),
         );
         return;
       }
 
+      final userData = userSnapshot.data() as Map<String, dynamic>;
       if (userData['password'] == password) {
+        
+        // get the user's UID from the document id
+        final uid = userSnapshot.id;
+        final hardwareContact = userData['hardwareContact'] as String?;
+
+        // save the contact locally for the background service
+        if (hardwareContact != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('last_hardware_contact', hardwareContact);
+        }
+
+        // load the trustednumber
+        await SmsService.loadTrustedNumberForUser(uid);
+
+        // initialize the sms listener
+        SmsService.initSmsListener();
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -3053,6 +3064,7 @@ class MapsService {
 ================================================================================
 
 ------lib\services\sms_service.dart
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:telephony/telephony.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -3068,93 +3080,121 @@ class SmsService {
     _currentUserName = name;
     _currentUserPhone = phone;
   }
-  // Add this method to your SmsService class
-static Future<bool> sendContactToHardware(String hardwareNumber) async {
-  if (_currentUserName == null || _currentUserPhone == null) {
-    throw 'User data not initialized';
-  }
 
-  try {
-    await telephony.sendSms(
-      to: hardwareNumber,
-      message: '$_currentUserName - $_currentUserPhone',
-    );
-    return true;
-  } catch (e) {
-    throw 'Failed to send SMS to hardware: $e';
-  }
-}
-  // Getter for hardware contact
-  static String? get hardwareContact => _trustedNumber;
+  // Send user contact info to hardware
+  static Future<bool> sendContactToHardware(String hardwareNumber) async {
+    if (_currentUserName == null || _currentUserPhone == null) {
+      throw 'User data not initialized';
+    }
 
-  // Load trusted number from Firestore
-  static Future<void> loadTrustedNumberFromFirestore() async {
     try {
-      DocumentSnapshot configDoc = await FirebaseFirestore.instance
-          .collection('settings')
-          .doc('app_config')
-          .get();
-
-      if (configDoc.exists) {
-        _trustedNumber = configDoc.get('trustedPhoneNumber')?.toString();
-      }
+      await telephony.sendSms(
+        to: hardwareNumber,
+        message: '$_currentUserName - $_currentUserPhone',
+      );
+      return true;
     } catch (e) {
-      print('Error loading trusted number: $e');
+      throw 'Failed to send SMS to hardware: $e';
     }
   }
 
-  // Send SMS message
+  // Get trusted hardware number
+  static String? get hardwareContact => _trustedNumber;
+
+  // Load trusted number from Firestore
+  static Future<void> loadTrustedNumberForUser(String uid) async {
+  try {
+    // Fetch the document directly using the UID
+    DocumentSnapshot userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .get();
+    if (userDoc.exists) {
+      // Get the hardware contact from the user's data
+      _trustedNumber = userDoc.get('hardwareContact')?.toString();
+      print("✅ User-specific trusted number loaded: $_trustedNumber");
+    } else {
+      print("⚠️ User document not found for UID: $uid");
+    }
+  } catch (e) {
+    print('❌ Error loading trusted number for user $uid: $e');
+  }
+}
+
+
+  // Send an SMS
   static Future<bool> sendSms(String number, String message) async {
     try {
       await telephony.sendSms(to: number, message: message);
+      print("✅ SMS sent to $number");
       return true;
     } catch (e) {
-      print('Failed to send SMS: $e');
+      print('❌ Failed to send SMS: $e');
       return false;
     }
   }
 
-  // Initialize SMS listener
+  // Initialize SMS listener (foreground + background)
   static void initSmsListener() {
+
     telephony.listenIncomingSms(
       onNewMessage: _handleIncomingSms,
       onBackgroundMessage: _backgroundMessageHandler,
     );
+    print("📡 SMS listener initialized");
   }
 
-  // Background message handler
+  // Background SMS handler (must be static or top-level)
   static Future<void> _backgroundMessageHandler(SmsMessage message) async {
     await _handleIncomingSms(message);
   }
 
   // Handle incoming messages
   static Future<void> _handleIncomingSms(SmsMessage message) async {
+    print("📩 Incoming SMS from ${message.address}: ${message.body}");
+
+    // for background handling
     if (_trustedNumber == null) {
-      await loadTrustedNumberFromFirestore();
+      final prefs = await SharedPreferences.getInstance();
+      _trustedNumber = prefs.getString('last_hardware_contact');
     }
 
-    if (message.address == _trustedNumber && 
+    if (_trustedNumber == null) {
+      print(" no trusted number available to check agains.");
+      return;
+    }
+
+
+    if (message.address == _trustedNumber &&
         message.body?.toLowerCase().contains('user needs help') == true) {
+      print("🚨 Emergency SMS detected!");
       await _handleEmergencyRequest(message.address!);
+    } else {
+      print("📭 SMS ignored: not from trusted hardware or unrecognized message.");
     }
   }
 
+  // Handle emergency
   static Future<void> _handleEmergencyRequest(String sender) async {
     try {
       final position = await _getCurrentPosition();
-      // Add your emergency response logic here
-      await sendSms(sender, 'Emergency response initiated');
+      final response = 'Emergency response started. Location: '
+          'Lat: ${position.latitude}, Lng: ${position.longitude}';
+
+      await sendSms(sender, response);
     } catch (e) {
-      print('Error handling emergency: $e');
+      print('❌ Error handling emergency: $e');
     }
   }
 
+  // Get current device location
   static Future<Position> _getCurrentPosition() async {
     return await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high,
     );
   }
 }
+
 ================================================================================
 
 ------lib\services\user_service.dart
@@ -3164,18 +3204,18 @@ class UserService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // Get user by phone number
-  Future<Map<String, dynamic>?> getUserByPhone(String phone) async {
+  Future<DocumentSnapshot?> getUserByPhone(String phone) async {
     final query = await _db
         .collection('users')
         .where('phone', isEqualTo: phone)
         .limit(1)
         .get();
     if (query.docs.isNotEmpty) {
-      // Return the data of the first document found
-      return query.docs.first.data();
+      // Return the first document snapshot found
+      return query.docs.first;
     }
     return null;
-  }
+}
 
   // Get user data by User ID (UID)
   // This is crucial for fetching the currently logged-in user's profile information.

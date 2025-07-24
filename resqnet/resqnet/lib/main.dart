@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';  // Fixed import line
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'services/sms_service.dart';
 import 'screens/Login_Screen.dart'; // Ensure this import path is correct
-
+import 'services/sms_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -12,18 +11,10 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
+  SmsService.initSmsListener();
+
   // Initialize SMS services
   bool smsPermissionCurrentlyGranted = false; // Default or check here if needed
-  try {
-    // You might want to check the actual permission status here
-    // for example: final status = await Permission.sms.status;
-    // smsPermissionCurrentlyGranted = status.isGranted;
-    await SmsService.loadTrustedNumberFromFirestore();
-    SmsService.initSmsListener();
-  } catch (e) {
-    print('Error initializing SMS services: $e');
-  }
-
   final prefs = await SharedPreferences.getInstance();
   final isDark = prefs.getBool('isDarkTheme') ?? false;
 
