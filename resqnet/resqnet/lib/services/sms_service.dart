@@ -87,10 +87,16 @@ static Future<bool> sendContactToHardware(String hardwareNumber) async {
   static Future<void> _handleEmergencyRequest(String sender) async {
     try {
       final position = await _getCurrentPosition();
-      // Add your emergency response logic here
-      await sendSms(sender, 'Emergency response initiated');
+      
+      // Send GPS location back to hardware
+      String locationMessage = 'EMERGENCY: ${position.latitude}, ${position.longitude}';
+      await sendSms(sender, locationMessage);
+      
+      print('Emergency SMS sent with location: ${position.latitude}, ${position.longitude}');
     } catch (e) {
       print('Error handling emergency: $e');
+      // Send basic response if GPS fails
+      await sendSms(sender, 'Emergency detected - GPS unavailable');
     }
   }
 

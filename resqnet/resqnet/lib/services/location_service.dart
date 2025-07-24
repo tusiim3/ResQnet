@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'dart:math';
 
 class LocationService {
@@ -195,6 +197,95 @@ class LocationService {
     }
 
     return nearbyRiders;
+  }
+
+  // Find nearest hospital based on emergency location
+  static Future<Map<String, dynamic>?> findNearestHospital(double emergencyLat, double emergencyLng) async {
+    try {
+      // Since this is a demo, a simple list of Uganda hospital. In production, we'd use Google Places API
+      final List<Map<String, dynamic>> hospitals = [
+        {
+          'name': 'Mulago National Referral Hospital',
+          'latitude': 0.3354,
+          'longitude': 32.5825,
+          'phone': '+256414530692',
+          'emergency': '+256414530020'
+        },
+        {
+          'name': 'Kampala Hospital',
+          'latitude': 0.3476,
+          'longitude': 32.5825,
+          'phone': '+256312200400',
+          'emergency': '+256312200400'
+        },
+        {
+          'name': 'Case Hospital',
+          'latitude': 0.3420,
+          'longitude': 32.5947,
+          'phone': '+256414258100',
+          'emergency': '+256414258100'
+        },
+        {
+          'name': 'Nakasero Hospital',
+          'latitude': 0.3215,
+          'longitude': 32.5779,
+          'phone': '+256312531000',
+          'emergency': '+256312531000'
+        },
+        {
+          'name': 'International Hospital Kampala',
+          'latitude': 0.3567,
+          'longitude': 32.6032,
+          'phone': '+256312200400',
+          'emergency': '+256312200999'
+        }
+      ];
+
+      Map<String, dynamic>? nearestHospital;
+      double shortestDistance = double.infinity;
+
+      // Find the closest hospital
+      for (var hospital in hospitals) {
+        double distance = _calculateDistanceStatic(
+          emergencyLat,
+          emergencyLng,
+          hospital['latitude'],
+          hospital['longitude'],
+        );
+
+        if (distance < shortestDistance) {
+          shortestDistance = distance;
+          nearestHospital = {
+            ...hospital,
+            'distance': distance,
+          };
+        }
+      }
+
+      return nearestHospital;
+    } catch (e) {
+      print('Error finding nearest hospital: $e');
+      return null;
+    }
+  }
+
+  // Static version of distance calculation for use in static methods
+  static double _calculateDistanceStatic(double lat1, double lng1, double lat2, double lng2) {
+    const double earthRadius = 6371; // km
+    final double dLat = _toRadiansStatic(lat2 - lat1);
+    final double dLng = _toRadiansStatic(lng2 - lng1);
+
+    final double a =
+        sin(dLat / 2) * sin(dLat / 2) +
+            cos(_toRadiansStatic(lat1)) * cos(_toRadiansStatic(lat2)) *
+                sin(dLng / 2) * sin(dLng / 2);
+
+    final double c = 2 * asin(sqrt(a));
+    return earthRadius * c;
+  }
+
+  static double _toRadiansStatic(double degrees) {
+    return degrees * (pi / 180);
   }
 
   double _calculateDistance(double lat1, double lng1, double lat2, double lng2) {
