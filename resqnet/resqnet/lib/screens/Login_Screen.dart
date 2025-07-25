@@ -447,6 +447,9 @@ class _LoginScreenState extends State<LoginScreen> {
         if (hardwareContact != null) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('last_hardware_contact', hardwareContact);
+          print("🔍 Saved hardwareContact to SharedPreferences: $hardwareContact");
+        } else {
+          print("⚠️ No hardwareContact found in user data for UID: $uid");
         }
 
         // load the trustednumber

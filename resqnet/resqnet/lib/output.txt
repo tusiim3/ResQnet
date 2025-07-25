@@ -96,13 +96,15 @@ import 'package:shared_preferences/shared_preferences.dart';  // Fixed import li
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'screens/Login_Screen.dart'; // Ensure this import path is correct
-
+import 'services/sms_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  SmsService.initSmsListener();
 
   // Initialize SMS services
   bool smsPermissionCurrentlyGranted = false; // Default or check here if needed
@@ -1291,13 +1293,15 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _requestSmsPermissions() async {
-    final status = await Permission.sms.request();
-    if (status.isGranted) {
-      setState(() => _showPermissionWarning = false);
-    } else if (status.isPermanentlyDenied) {
-      await openAppSettings();
-    }
+  final status = await Permission.sms.request();
+
+  if (status.isGranted) {
+    setState(() => _showPermissionWarning = false);
+  } else if (status.isPermanentlyDenied) {
+    await openAppSettings();
   }
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -1722,6 +1726,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/location_service.dart';
 
 class MapScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
@@ -1740,11 +1745,15 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixin {
   final Completer<GoogleMapController> _controller = Completer();
   LatLng? _destination;
+  LatLng? _userLocation;
   bool _mapReady = false;
+  bool _isLoading = true;
+  String? _error;
 
-  static const CameraPosition _initialPosition = CameraPosition(
-    target: LatLng(0.315, 32.582), // Kampala coordinates
-    zoom: 13.0, // Safer zoom to prevent surface overload
+  // Use user's location as initial position, fallback to Kampala
+  CameraPosition _initialPosition = const CameraPosition(
+    target: LatLng(0.315, 32.582), // Kampala coordinates (fallback)
+    zoom: 12.0,
   );
 
   @override
@@ -1753,9 +1762,36 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadDestinationFromSMS();
+    // Get user location and load map data
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await _initializeMap();
+        setState(() {
+          _isLoading = false;
+        });
+      } catch (e) {
+        setState(() {
+          _error = 'Failed to load map data: $e';
+          _isLoading = false;
+        });
+      }
     });
+  }
+
+  Future<void> _initializeMap() async {
+    // Get user's current GPS location
+    _userLocation = await LocationService.getCurrentGPSLocation();
+    
+    // If we got user location, update initial position
+    if (_userLocation != null) {
+      _initialPosition = CameraPosition(
+        target: _userLocation!,
+        zoom: 16.0, // Closer zoom for user location
+      );
+    }
+
+    // Load destination from SMS
+    await _loadDestinationFromSMS();
   }
 
   Future<void> _loadDestinationFromSMS() async {
@@ -1779,6 +1815,7 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
   @override
   Widget build(BuildContext context) {
     super.build(context); // required for keep-alive
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Map View'),
@@ -1789,24 +1826,82 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
           ),
         ],
       ),
-      body: _mapReady
-          ? GoogleMap(
-              initialCameraPosition: _initialPosition,
-              myLocationEnabled: true,
-              onMapCreated: (GoogleMapController controller) {
-                _controller.complete(controller);
-              },
-              markers: _destination != null
-                  ? {
-                      Marker(
-                        markerId: const MarkerId('destination'),
-                        position: _destination!,
-                        infoWindow: const InfoWindow(title: "Emergency Location"),
-                      )
-                    }
-                  : {},
+      body: _isLoading
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading map...'),
+                ],
+              ),
             )
-          : const Center(child: CircularProgressIndicator()),
+          : _error != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error, size: 64, color: Colors.red),
+                      const SizedBox(height: 16),
+                      Text(_error!, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _error = null;
+                            _isLoading = true;
+                          });
+                          _loadDestinationFromSMS();
+                        },
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                )
+              : _mapReady
+                  ? GoogleMap(
+                      initialCameraPosition: _initialPosition,
+                      myLocationEnabled: true,
+                      myLocationButtonEnabled: true,
+                      zoomControlsEnabled: true,
+                      mapToolbarEnabled: false,
+                      buildingsEnabled: false,
+                      trafficEnabled: false,
+                      onMapCreated: (GoogleMapController controller) async {
+                        if (!_controller.isCompleted) {
+                          _controller.complete(controller);
+                          
+                          // Center map on user location once controller is ready
+                          if (_userLocation != null) {
+                            await controller.animateCamera(
+                              CameraUpdate.newCameraPosition(
+                                CameraPosition(
+                                  target: _userLocation!,
+                                  zoom: 16.0,
+                                ),
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      markers: _destination != null
+                          ? {
+                              Marker(
+                                markerId: const MarkerId('destination'),
+                                position: _destination!,
+                                infoWindow: const InfoWindow(
+                                  title: "Emergency Location",
+                                  snippet: "Tap for more details",
+                                ),
+                                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+                              )
+                            }
+                          : {},
+                    )
+                  : const Center(
+                      child: Text('Map not ready'),
+                    ),
     );
   }
 }
@@ -2805,11 +2900,65 @@ class AuthService {
 ------lib\services\location_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'dart:math';
+import '../config/api_config.dart';
 
 class LocationService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Get current GPS location
+  static Future<LatLng?> getCurrentGPSLocation() async {
+    try {
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        return null;
+      }
+
+      // Check permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          return null;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        return null;
+      }
+
+      // Get current position
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      return LatLng(position.latitude, position.longitude);
+    } catch (e) {
+      print('Error getting GPS location: $e');
+      return null;
+    }
+  }
+
+  // Move camera to user's location
+  static Future<void> centerMapOnUserLocation(GoogleMapController controller) async {
+    LatLng? userLocation = await getCurrentGPSLocation();
+    if (userLocation != null) {
+      await controller.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: userLocation,
+            zoom: 16.0, // Good zoom level for user location
+          ),
+        ),
+      );
+    }
+  }
 
   // Save real-time location from helmet
   Future<void> saveLocation({
@@ -2951,6 +3100,115 @@ class LocationService {
     return nearbyRiders;
   }
 
+  // Find nearest hospital based on emergency location using Google Places API
+  static Future<Map<String, dynamic>?> findNearestHospital(double emergencyLat, double emergencyLng) async {
+    try {
+      final String apiKey = ApiConfig.googleMapsApiKey;
+      final String url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
+          '?location=$emergencyLat,$emergencyLng'
+          '&radius=10000' // 10km radius
+          '&type=hospital'
+          '&key=$apiKey';
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final results = data['results'] as List;
+
+        if (results.isEmpty) {
+          print('No hospitals found nearby');
+          return null;
+        }
+
+        Map<String, dynamic>? nearestHospital;
+        double shortestDistance = double.infinity;
+
+        // Find the closest hospital
+        for (var place in results) {
+          final geometry = place['geometry'];
+          final location = geometry['location'];
+          final lat = location['lat'].toDouble();
+          final lng = location['lng'].toDouble();
+
+          double distance = _calculateDistanceStatic(
+            emergencyLat,
+            emergencyLng,
+            lat,
+            lng,
+          );
+
+          if (distance < shortestDistance) {
+            shortestDistance = distance;
+            
+            // Get additional details for the hospital
+            String? phoneNumber = await _getPlacePhone(place['place_id'], apiKey);
+            
+            nearestHospital = {
+              'name': place['name'] ?? 'Unknown Hospital',
+              'latitude': lat,
+              'longitude': lng,
+              'phone': phoneNumber ?? 'Phone not available',
+              'emergency': phoneNumber ?? 'Emergency contact not available',
+              'distance': distance,
+              'address': place['vicinity'] ?? 'Address not available',
+              'rating': place['rating']?.toDouble() ?? 0.0,
+              'place_id': place['place_id'],
+            };
+          }
+        }
+
+        return nearestHospital;
+      } else {
+        print('Error fetching hospitals: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Error finding nearest hospital: $e');
+      return null;
+    }
+  }
+
+  // Get phone number for a specific place
+  static Future<String?> _getPlacePhone(String placeId, String apiKey) async {
+    try {
+      final String url = 'https://maps.googleapis.com/maps/api/place/details/json'
+          '?place_id=$placeId'
+          '&fields=formatted_phone_number'
+          '&key=$apiKey';
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final result = data['result'];
+        return result['formatted_phone_number'] as String?;
+      }
+    } catch (e) {
+      print('Error getting place phone: $e');
+    }
+    return null;
+  }
+
+  // Static version of distance calculation for use in static methods
+  static double _calculateDistanceStatic(double lat1, double lng1, double lat2, double lng2) {
+    const double earthRadius = 6371; // km
+    final double dLat = _toRadiansStatic(lat2 - lat1);
+    final double dLng = _toRadiansStatic(lng2 - lng1);
+
+    final double a =
+        sin(dLat / 2) * sin(dLat / 2) +
+            cos(_toRadiansStatic(lat1)) * cos(_toRadiansStatic(lat2)) *
+                sin(dLng / 2) * sin(dLng / 2);
+
+    final double c = 2 * asin(sqrt(a));
+    return earthRadius * c;
+  }
+
+  static double _toRadiansStatic(double degrees) {
+    return degrees * (pi / 180);
+  }
+
   double _calculateDistance(double lat1, double lng1, double lat2, double lng2) {
     const double earthRadius = 6371; // km
     final double dLat = _toRadians(lat2 - lat1);
@@ -3063,11 +3321,287 @@ class MapsService {
 }
 ================================================================================
 
+------lib\services\nearby_rider_alert_service.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:math';
+
+class NearbyRiderAlertService {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Recommended alert radius
+  static const double DEFAULT_ALERT_RADIUS_KM = 3.0;
+
+  // Send emergency alert to nearby riders
+  Future<List<String>> alertNearbyRiders({
+    required String emergencyAlertId,
+    required double latitude,
+    required double longitude,
+    required String alertType,
+    String? emergencyDescription,
+    double radiusKm = DEFAULT_ALERT_RADIUS_KM,
+  }) async {
+    final currentUserId = _auth.currentUser?.uid;
+    if (currentUserId == null) return [];
+
+    // Get current user info
+    final currentUserDoc = await _db.collection('users').doc(currentUserId).get();
+    final currentUserData = currentUserDoc.data();
+    final currentUserName = currentUserData?['username'] ?? 'A rider';
+
+    // Find nearby riders
+    final nearbyRiders = await _getNearbyActiveRiders(
+      latitude: latitude,
+      longitude: longitude,
+      radiusKm: radiusKm,
+      excludeUserId: currentUserId,
+    );
+
+    List<String> notifiedRiderIds = [];
+
+    // Send alerts to each nearby rider
+    for (var rider in nearbyRiders) {
+      try {
+        await _sendRiderAlert(
+          targetRiderId: rider['userId'],
+          emergencyAlertId: emergencyAlertId,
+          emergencyLocation: {'latitude': latitude, 'longitude': longitude},
+          alertType: alertType,
+          emergencyUserName: currentUserName,
+          description: emergencyDescription,
+          distanceKm: rider['distance'],
+        );
+        notifiedRiderIds.add(rider['userId']);
+      } catch (e) {
+        print('Failed to alert rider ${rider['userId']}: $e');
+      }
+    }
+
+    // Log the nearby alert activity
+    await _logNearbyAlert(
+      emergencyAlertId: emergencyAlertId,
+      alertLocation: {'latitude': latitude, 'longitude': longitude},
+      nearbyRidersCount: nearbyRiders.length,
+      notifiedRidersCount: notifiedRiderIds.length,
+      radiusKm: radiusKm,
+    );
+
+    return notifiedRiderIds;
+  }
+
+  // Get nearby active riders
+  Future<List<Map<String, dynamic>>> _getNearbyActiveRiders({
+    required double latitude,
+    required double longitude,
+    required double radiusKm,
+    required String excludeUserId,
+  }) async {
+    // Get users who have been active in the last 30 minutes
+    final thirtyMinutesAgo = DateTime.now().subtract(const Duration(minutes: 30));
+
+    final snapshot = await _db
+        .collection('users')
+        .where('currentLocation', isNotEqualTo: null)
+        .get();
+
+    List<Map<String, dynamic>> nearbyRiders = [];
+
+    for (var doc in snapshot.docs) {
+      if (doc.id == excludeUserId) continue; // Don't alert the user in emergency
+
+      final data = doc.data();
+      final currentLocation = data['currentLocation'] as Map<String, dynamic>?;
+
+      if (currentLocation != null) {
+        final locationTimestamp = (currentLocation['timestamp'] as Timestamp?)?.toDate();
+
+        // Check if location is recent (rider is active)
+        if (locationTimestamp != null && locationTimestamp.isAfter(thirtyMinutesAgo)) {
+          final riderLat = (currentLocation['latitude'] as num).toDouble();
+          final riderLng = (currentLocation['longitude'] as num).toDouble();
+
+          final distance = _calculateDistance(latitude, longitude, riderLat, riderLng);
+
+          if (distance <= radiusKm) {
+            nearbyRiders.add({
+              'userId': doc.id,
+              'username': data['username'] ?? 'Unknown',
+              'latitude': riderLat,
+              'longitude': riderLng,
+              'distance': distance,
+              'lastSeen': locationTimestamp,
+              'phone': data['phone'],
+              'fullName': data['fullName'],
+            });
+          }
+        }
+      }
+    }
+
+    // Sort by distance (closest first)
+    nearbyRiders.sort((a, b) => (a['distance'] as double).compareTo(b['distance'] as double));
+
+    return nearbyRiders;
+  }
+
+  // Send alert to individual rider
+  Future<void> _sendRiderAlert({
+    required String targetRiderId,
+    required String emergencyAlertId,
+    required Map<String, double> emergencyLocation,
+    required String alertType,
+    required String emergencyUserName,
+    String? description,
+    required double distanceKm,
+  }) async {
+    await _db.collection('rider_alerts').add({
+      'targetRiderId': targetRiderId,
+      'emergencyAlertId': emergencyAlertId,
+      'emergencyLocation': emergencyLocation,
+      'alertType': alertType, // 'crash', 'panic', 'breakdown', etc.
+      'emergencyUserName': emergencyUserName,
+      'description': description,
+      'distanceKm': distanceKm,
+      'timestamp': FieldValue.serverTimestamp(),
+      'status': 'sent', // 'sent', 'acknowledged', 'responding', 'ignored'
+      'isRead': false,
+      'responseTime': null,
+      'actionTaken': null,
+    });
+
+    // Update rider's notification count
+    await _db.collection('users').doc(targetRiderId).update({
+      'unreadAlerts': FieldValue.increment(1),
+      'lastAlertReceived': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // Log the nearby alert activity
+  Future<void> _logNearbyAlert({
+    required String emergencyAlertId,
+    required Map<String, double> alertLocation,
+    required int nearbyRidersCount,
+    required int notifiedRidersCount,
+    required double radiusKm,
+  }) async {
+    await _db.collection('nearby_alert_logs').add({
+      'emergencyAlertId': emergencyAlertId,
+      'alertLocation': alertLocation,
+      'radiusKm': radiusKm,
+      'nearbyRidersFound': nearbyRidersCount,
+      'ridersNotified': notifiedRidersCount,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // Get alerts for a specific rider
+  Stream<QuerySnapshot> getRiderAlerts(String riderId) {
+    return _db
+        .collection('rider_alerts')
+        .where('targetRiderId', isEqualTo: riderId)
+        .orderBy('timestamp', descending: true)
+        .limit(50)
+        .snapshots();
+  }
+
+  // Update rider alert status (when rider acknowledges or responds)
+  Future<void> updateRiderAlertStatus({
+    required String alertId,
+    required String status, // 'acknowledged', 'responding', 'ignored'
+    String? actionTaken,
+  }) async {
+    await _db.collection('rider_alerts').doc(alertId).update({
+      'status': status,
+      'actionTaken': actionTaken,
+      'responseTime': FieldValue.serverTimestamp(),
+      'isRead': true,
+    });
+  }
+
+  // Mark alert as read
+  Future<void> markAlertAsRead(String alertId, String riderId) async {
+    await _db.collection('rider_alerts').doc(alertId).update({
+      'isRead': true,
+    });
+
+    // Decrease unread count
+    await _db.collection('users').doc(riderId).update({
+      'unreadAlerts': FieldValue.increment(-1),
+    });
+  }
+
+  // Get unread alert count for rider
+  Future<int> getUnreadAlertCount(String riderId) async {
+    final userDoc = await _db.collection('users').doc(riderId).get();
+    return (userDoc.data()?['unreadAlerts'] as int?) ?? 0;
+  }
+
+  // Calculate distance between two points
+  double _calculateDistance(double lat1, double lng1, double lat2, double lng2) {
+    const double earthRadius = 6371; // km
+    final double dLat = _toRadians(lat2 - lat1);
+    final double dLng = _toRadians(lng2 - lng1);
+
+    final double a =
+        sin(dLat / 2) * sin(dLat / 2) +
+            cos(_toRadians(lat1)) * cos(_toRadians(lat2)) *
+                sin(dLng / 2) * sin(dLng / 2);
+
+    final double c = 2 * asin(sqrt(a));
+    return earthRadius * c;
+  }
+
+  double _toRadians(double degrees) {
+    return degrees * (pi / 180);
+  }
+
+  // Get nearby alert statistics
+  Future<Map<String, dynamic>> getNearbyAlertStats() async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return {};
+
+    // Alerts sent (emergencies where user was the one in trouble)
+    final sentAlertsSnapshot = await _db
+        .collection('nearby_alert_logs')
+        .where('emergencyAlertId', isEqualTo: userId)
+        .get();
+
+    // Alerts received (emergencies where user was notified to help)
+    final receivedAlertsSnapshot = await _db
+        .collection('rider_alerts')
+        .where('targetRiderId', isEqualTo: userId)
+        .get();
+
+    // Responses given (how many times user responded to help others)
+    final responsesSnapshot = await _db
+        .collection('rider_alerts')
+        .where('targetRiderId', isEqualTo: userId)
+        .where('status', isEqualTo: 'responding')
+        .get();
+
+    return {
+      'emergenciesTriggered': sentAlertsSnapshot.docs.length,
+      'alertsReceived': receivedAlertsSnapshot.docs.length,
+      'timesResponded': responsesSnapshot.docs.length,
+      'responseRate': receivedAlertsSnapshot.docs.isEmpty
+          ? 0.0
+          : (responsesSnapshot.docs.length / receivedAlertsSnapshot.docs.length * 100),
+    };
+  }
+}
+
+================================================================================
+
 ------lib\services\sms_service.dart
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:telephony/telephony.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'location_service.dart';
+import '../config/api_config.dart';
 
 class SmsService {
   static final Telephony telephony = Telephony.instance;
@@ -3103,24 +3637,23 @@ class SmsService {
 
   // Load trusted number from Firestore
   static Future<void> loadTrustedNumberForUser(String uid) async {
-  try {
-    // Fetch the document directly using the UID
-    DocumentSnapshot userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .get();
-    if (userDoc.exists) {
-      // Get the hardware contact from the user's data
-      _trustedNumber = userDoc.get('hardwareContact')?.toString();
-      print("✅ User-specific trusted number loaded: $_trustedNumber");
-    } else {
-      print("⚠️ User document not found for UID: $uid");
+    try {
+      // Fetch the document directly using the UID
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
+      if (userDoc.exists) {
+        // Get the hardware contact from the user's data
+        _trustedNumber = userDoc.get('hardwareContact')?.toString();
+        print("✅ User-specific trusted number loaded: $_trustedNumber");
+      } else {
+        print("⚠️ User document not found for UID: $uid");
+      }
+    } catch (e) {
+      print('❌ Error loading trusted number for user $uid: $e');
     }
-  } catch (e) {
-    print('❌ Error loading trusted number for user $uid: $e');
   }
-}
-
 
   // Send an SMS
   static Future<bool> sendSms(String number, String message) async {
@@ -3136,16 +3669,21 @@ class SmsService {
 
   // Initialize SMS listener (foreground + background)
   static void initSmsListener() {
-
     telephony.listenIncomingSms(
       onNewMessage: _handleIncomingSms,
-      onBackgroundMessage: _backgroundMessageHandler,
+      onBackgroundMessage: backgroundMessageHandler, // Now top-level
+      listenInBackground: true, // Ensure background listening
     );
     print("📡 SMS listener initialized");
   }
 
-  // Background SMS handler (must be static or top-level)
-  static Future<void> _backgroundMessageHandler(SmsMessage message) async {
+  // Handle background message
+  static Future<void> backgroundMessageHandler(SmsMessage message) async {
+    await handleIncomingSmsExternally(message);
+  }
+
+  // Exposed method to handle incoming SMS from background handler
+  static Future<void> handleIncomingSmsExternally(SmsMessage message) async {
     await _handleIncomingSms(message);
   }
 
@@ -3160,30 +3698,82 @@ class SmsService {
     }
 
     if (_trustedNumber == null) {
-      print(" no trusted number available to check agains.");
+      print("⚠️ No trusted number available to check against.");
       return;
     }
-
 
     if (message.address == _trustedNumber &&
         message.body?.toLowerCase().contains('user needs help') == true) {
       print("🚨 Emergency SMS detected!");
       await _handleEmergencyRequest(message.address!);
-    } else {
-      print("📭 SMS ignored: not from trusted hardware or unrecognized message.");
     }
+  }
+
+  // Reverse geocoding to get address from emergency location coordinates
+  static Future<String> _getAddressFromCoordinates(double emergencyLat, double emergencyLng) async {
+    try {
+      final String apiKey = ApiConfig.googleMapsApiKey;
+      final String url = 'https://maps.googleapis.com/maps/api/geocode/json'
+          '?latlng=$emergencyLat,$emergencyLng'
+          '&key=$apiKey';
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final results = data['results'] as List;
+
+        if (results.isNotEmpty) {
+          return results[0]['formatted_address'] as String;
+        }
+      }
+    } catch (e) {
+      print('Error getting address from emergency location: $e');
+    }
+    
+    // Fallback if reverse geocoding fails
+    return 'Unknown emergency location';
   }
 
   // Handle emergency
   static Future<void> _handleEmergencyRequest(String sender) async {
     try {
+      // Get emergency location GPS position
       final position = await _getCurrentPosition();
+      
+      // Find nearest hospital from emergency location
+      final hospital = await LocationService.findNearestHospital(
+        position.latitude, 
+        position.longitude
+      );
+      
+      // Get readable address from emergency location coordinates
+      final address = await _getAddressFromCoordinates(
+        position.latitude, 
+        position.longitude
+      );
+      
+      // Format the emergency message
+      String emergencyMessage = 'Emergency at: $address (${position.latitude}, ${position.longitude})';
+      
+      if (hospital != null) {
+        emergencyMessage += ', Contact: ${hospital['name']}, ${hospital['emergency']}';
+      } else {
+        emergencyMessage += ', Contact: No nearby hospital found, call 911';
+      }
+      
+      // Send formatted emergency SMS
+      await sendSms(sender, emergencyMessage);
+      
+      print('Emergency SMS sent: $emergencyMessage');
       final response = 'Emergency response started. Location: '
           'Lat: ${position.latitude}, Lng: ${position.longitude}';
 
       await sendSms(sender, response);
     } catch (e) {
-      print('❌ Error handling emergency: $e');
+      print('Error handling emergency: $e');
+      // Send basic response if everything fails
+      await sendSms(sender, 'Emergency detected - Unable to get location details');
     }
   }
 
