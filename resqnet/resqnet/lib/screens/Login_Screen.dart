@@ -4,6 +4,7 @@ import 'package:resqnet/screens/register_screen.dart';
 import 'package:resqnet/screens/Home_Screen.dart';
 import 'package:resqnet/services/user_service.dart';
 import 'package:resqnet/services/sms_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 
 class LoginScreen extends StatefulWidget {
@@ -51,15 +52,15 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _requestSmsPermissions() async {
-    final status = await Permission.sms.request();
-    if (status.isGranted) {
-      setState(() => _showPermissionWarning = false);
-      await SmsService.loadTrustedNumberFromFirestore();
-      SmsService.initSmsListener();
-    } else if (status.isPermanentlyDenied) {
-      await openAppSettings();
-    }
+  final status = await Permission.sms.request();
+
+  if (status.isGranted) {
+    setState(() => _showPermissionWarning = false);
+  } else if (status.isPermanentlyDenied) {
+    await openAppSettings();
   }
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -425,17 +426,38 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     try {
-      final userData = await _userService.getUserByPhone(phone);
+      final userSnapshot = await _userService.getUserByPhone(phone);
       Navigator.of(context).pop();
 
-      if (userData == null) {
+      if (userSnapshot == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No user found with this phone number.')),
         );
         return;
       }
 
+      final userData = userSnapshot.data() as Map<String, dynamic>;
       if (userData['password'] == password) {
+        
+        // get the user's UID from the document id
+        final uid = userSnapshot.id;
+        final hardwareContact = userData['hardwareContact'] as String?;
+
+        // save the contact locally for the background service
+        if (hardwareContact != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('last_hardware_contact', hardwareContact);
+          print("🔍 Saved hardwareContact to SharedPreferences: $hardwareContact");
+        } else {
+          print("⚠️ No hardwareContact found in user data for UID: $uid");
+        }
+
+        // load the trustednumber
+        await SmsService.loadTrustedNumberForUser(uid);
+
+        // initialize the sms listener
+        SmsService.initSmsListener();
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
