@@ -200,8 +200,12 @@ class LocationService {
     return nearbyRiders;
   }
 
-  // Find nearest hospital based on emergency location using Google Places API
-  static Future<Map<String, dynamic>?> findNearestHospital(double emergencyLat, double emergencyLng) async {
+  // Find nearest hospitals based on emergency location (returns multiple hospitals)
+  static Future<List<Map<String, dynamic>>> findNearestHospitals(
+    double emergencyLat, 
+    double emergencyLng,
+    {int limit = 3}
+  ) async {
     try {
       final String apiKey = ApiConfig.googleMapsApiKey;
       final String url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
@@ -218,14 +222,11 @@ class LocationService {
 
         if (results.isEmpty) {
           print('No hospitals found nearby');
-          return null;
+          return [];
         }
 
-        Map<String, dynamic>? nearestHospital;
-        double shortestDistance = double.infinity;
-
-        // Find the closest hospital
-        for (var place in results) {
+        // Process and sort hospitals by distance
+        final hospitals = await Future.wait(results.take(limit).map((place) async {
           final geometry = place['geometry'];
           final location = geometry['location'];
           final lat = location['lat'].toDouble();
@@ -238,35 +239,39 @@ class LocationService {
             lng,
           );
 
-          if (distance < shortestDistance) {
-            shortestDistance = distance;
-            
-            // Get additional details for the hospital
-            String? phoneNumber = await _getPlacePhone(place['place_id'], apiKey);
-            
-            nearestHospital = {
-              'name': place['name'] ?? 'Unknown Hospital',
-              'latitude': lat,
-              'longitude': lng,
-              'phone': phoneNumber ?? 'Phone not available',
-              'emergency': phoneNumber ?? 'Emergency contact not available',
-              'distance': distance,
-              'address': place['vicinity'] ?? 'Address not available',
-              'rating': place['rating']?.toDouble() ?? 0.0,
-              'place_id': place['place_id'],
-            };
-          }
-        }
+          // Get additional details for the hospital
+          String? phoneNumber = await _getPlacePhone(place['place_id'], apiKey);
+          
+          return {
+            'name': place['name'] ?? 'Unknown Hospital',
+            'latitude': lat,
+            'longitude': lng,
+            'phone': phoneNumber ?? 'Phone not available',
+            'emergency': phoneNumber ?? '911', // Default emergency number
+            'distance': distance,
+            'address': place['vicinity'] ?? 'Address not available',
+            'rating': place['rating']?.toDouble() ?? 0.0,
+            'place_id': place['place_id'],
+          };
+        }));
 
-        return nearestHospital;
+        // Sort hospitals by distance (nearest first)
+        hospitals.sort((a, b) => (a['distance'] as double).compareTo(b['distance'] as double));
+        return hospitals;
       } else {
         print('Error fetching hospitals: ${response.statusCode}');
-        return null;
+        return [];
       }
     } catch (e) {
-      print('Error finding nearest hospital: $e');
-      return null;
+      print('Error finding nearest hospitals: $e');
+      return [];
     }
+  }
+
+  // Keep the original single hospital finder for backward compatibility
+  static Future<Map<String, dynamic>?> findNearestHospital(double emergencyLat, double emergencyLng) async {
+    final hospitals = await findNearestHospitals(emergencyLat, emergencyLng, limit: 1);
+    return hospitals.isNotEmpty ? hospitals.first : null;
   }
 
   // Get phone number for a specific place
