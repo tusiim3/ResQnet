@@ -3,6 +3,9 @@ import 'package:resqnet/screens/map_screen.dart';
 import 'package:resqnet/screens/alert_feed_screen.dart';
 import 'package:resqnet/screens/profile_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/location_service.dart';
+import '../services/user_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
@@ -107,20 +110,65 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // Extract the original home tab content to a separate widget
-class _HomeTab extends StatelessWidget {
+class _HomeTab extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDarkTheme;
-  final bool isOnline = true;
-  final int tripsToday = 24;
-  final int totalTrips = 156;
-  final String userName = "Baelish 😎!";
+
+  const _HomeTab({required this.toggleTheme, required this.isDarkTheme});
+
+  @override
+  State<_HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends State<_HomeTab> {
+  final UserService _userService = UserService();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  
+  // User data that will be loaded from Firebase
+  String userName = "Loading...";
+  String userEmail = "Loading...";
+  int tripsToday = 0;
+  int totalTrips = 0;
+  bool _isLoading = true;
+  
   final List<EmergencyContact> emergencyContacts = [
     EmergencyContact(name: "Police", number: "999", icon: "🚔"),
     EmergencyContact(name: "Ambulance", number: "911", icon: "🚑"),
     EmergencyContact(name: "Fire", number: "998", icon: "🚒"),
   ];
 
-  _HomeTab({required this.toggleTheme, required this.isDarkTheme});
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final User? user = _auth.currentUser;
+      if (user != null) {
+        final userData = await _userService.getUserData(user.uid);
+        if (userData != null && mounted) {
+          setState(() {
+            userName = userData['username'] ?? userData['fullName'] ?? 'Rider';
+            userEmail = userData['email'] ?? '';
+            // You can add trip data to Firebase later
+            tripsToday = userData['tripsToday'] ?? 0;
+            totalTrips = userData['totalTrips'] ?? 0;
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+      if (mounted) {
+        setState(() {
+          userName = 'Rider';
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   String greeting() {
     int time = DateTime.now().hour;
@@ -135,6 +183,14 @@ class _HomeTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const SafeArea(
+        child: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    
     return SafeArea(
       child: SingleChildScrollView(
         child: Padding(
@@ -225,7 +281,7 @@ class _HomeTab extends StatelessWidget {
                 ),
                 child: ElevatedButton(
                   onPressed: () {
-                    // _showEmergencyDialog();
+                    _triggerEmergencyAlert(context);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.transparent,
@@ -265,7 +321,7 @@ class _HomeTab extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => MapScreen(toggleTheme: toggleTheme, isDarkTheme: isDarkTheme),
+                            builder: (context) => MapScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
                           ),
                         );
                       },
@@ -280,7 +336,7 @@ class _HomeTab extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => AlertFeedScreen(toggleTheme: toggleTheme, isDarkTheme: isDarkTheme),
+                            builder: (context) => AlertFeedScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
                           ),
                         );
                       },
@@ -517,6 +573,57 @@ class _HomeTab extends StatelessWidget {
         ),
       );
     }
+  }
+
+  void _triggerEmergencyAlert(BuildContext context) async {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('🚨 Emergency Alert'),
+        content: const Text('Are you sure you want to trigger an emergency alert? This will notify nearby riders and emergency contacts.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              
+              // Get current location
+              try {
+                final location = await LocationService.getCurrentGPSLocation();
+                if (location != null) {
+                  // Save emergency to Firebase
+                  final locationService = LocationService();
+                  await locationService.saveEmergencyLocation(
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                    additionalInfo: 'Manual emergency alert triggered',
+                  );
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Emergency alert sent! Help is on the way.'),
+                      backgroundColor: Color(0xFFE74C3C),
+                    ),
+                  );
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to send alert: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE74C3C)),
+            child: const Text('Send Alert', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 }
 

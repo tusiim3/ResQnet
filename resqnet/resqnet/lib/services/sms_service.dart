@@ -123,6 +123,15 @@ class SmsService {
       final position = await _getCurrentPosition();
       print("📍 Current position: ${position.latitude}, ${position.longitude}");
 
+      // Save emergency to Firebase
+      final locationService = LocationService();
+      await locationService.saveEmergencyLocation(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        additionalInfo: 'Emergency detected via SMS from hardware',
+      );
+      print('✅ Emergency saved to Firebase');
+
       // Find nearest hospitals (now getting 3)
       final hospitals = await LocationService.findNearestHospitals(
         position.latitude, 

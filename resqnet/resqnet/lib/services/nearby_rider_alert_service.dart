@@ -14,7 +14,6 @@ class NearbyRiderAlertService {
     required String emergencyAlertId,
     required double latitude,
     required double longitude,
-    required String alertType,
     String? emergencyDescription,
     double radiusKm = DEFAULT_ALERT_RADIUS_KM,
   }) async {
@@ -43,7 +42,7 @@ class NearbyRiderAlertService {
           targetRiderId: rider['userId'],
           emergencyAlertId: emergencyAlertId,
           emergencyLocation: {'latitude': latitude, 'longitude': longitude},
-          alertType: alertType,
+          alertType: 'Emergency', // Fixed to use Emergency
           emergencyUserName: currentUserName,
           description: emergencyDescription,
           distanceKm: rider['distance'],
@@ -135,7 +134,7 @@ class NearbyRiderAlertService {
       'targetRiderId': targetRiderId,
       'emergencyAlertId': emergencyAlertId,
       'emergencyLocation': emergencyLocation,
-      'alertType': alertType, // 'crash', 'panic', 'breakdown', etc.
+      'alertType': 'Emergency', // Fixed to Emergency since all are emergencies
       'emergencyUserName': emergencyUserName,
       'description': description,
       'distanceKm': distanceKm,

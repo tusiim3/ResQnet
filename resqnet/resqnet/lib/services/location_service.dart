@@ -120,8 +120,6 @@ class LocationService {
   Future<void> saveEmergencyLocation({
     required double latitude,
     required double longitude,
-    required String helmetId,
-    required String alertType,
     String? additionalInfo,
     Map<String, dynamic>? crashData,
   }) async {
@@ -130,10 +128,8 @@ class LocationService {
 
     await _db.collection('emergency_locations').add({
       'userId': userId,
-      'helmetId': helmetId,
       'latitude': latitude,
       'longitude': longitude,
-      'alertType': alertType, // i was thinking that we have diff alerts; crash, panic, low_battery, etc.
       'additionalInfo': additionalInfo,
       'crashData': crashData,
       'timestamp': FieldValue.serverTimestamp(),
@@ -141,6 +137,71 @@ class LocationService {
       'isResolved': false,
       'responseTime': null,
     });
+  }
+
+  // Get all active emergencies for map display
+  static Future<List<Map<String, dynamic>>> getAllActiveEmergencies() async {
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('emergency_locations')
+          .where('isResolved', isEqualTo: false)
+          .orderBy('timestamp', descending: true)
+          .get();
+
+      List<Map<String, dynamic>> emergencies = [];
+
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        
+        // Get user details for the emergency
+        String riderName = 'Unknown Rider';
+        try {
+          final userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(data['userId'])
+              .get();
+          
+          if (userDoc.exists) {
+            riderName = userDoc.data()?['username'] ?? userDoc.data()?['name'] ?? 'Unknown Rider';
+          }
+        } catch (e) {
+          print('Error getting rider name: $e');
+        }
+
+        // Calculate time elapsed
+        String timeElapsed = 'Unknown time';
+        if (data['timestamp'] != null) {
+          final emergencyTime = (data['timestamp'] as Timestamp).toDate();
+          final now = DateTime.now();
+          final difference = now.difference(emergencyTime);
+          
+          if (difference.inMinutes < 60) {
+            timeElapsed = '${difference.inMinutes} mins ago';
+          } else if (difference.inHours < 24) {
+            timeElapsed = '${difference.inHours} hours ago';
+          } else {
+            timeElapsed = '${difference.inDays} days ago';
+          }
+        }
+
+        emergencies.add({
+          'id': doc.id,
+          'latitude': data['latitude']?.toDouble() ?? 0.0,
+          'longitude': data['longitude']?.toDouble() ?? 0.0,
+          'riderName': riderName,
+          'alertType': 'Emergency', // Set to Emergency since all are emergencies
+          'timeElapsed': timeElapsed,
+          'additionalInfo': data['additionalInfo'] ?? '',
+          'helmetId': data['helmetId'] ?? 'Unknown',
+          'timestamp': data['timestamp'],
+        });
+      }
+
+      return emergencies;
+    } catch (e) {
+      print('Error fetching active emergencies: $e');
+      return [];
+    }
   }
 
   // Get emergency locations for monitoring dashboard

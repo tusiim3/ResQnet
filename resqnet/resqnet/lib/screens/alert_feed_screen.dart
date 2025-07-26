@@ -2,6 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:resqnet/screens/map_screen.dart';
+import '../services/nearby_rider_alert_service.dart';
+import '../services/location_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AlertFeedScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
@@ -13,32 +17,8 @@ class AlertFeedScreen extends StatefulWidget {
 }
 
 class _AlertFeedScreenState extends State<AlertFeedScreen> {
-  List<AlertItem> alerts = [
-    AlertItem(
-      id: '1',
-      title: 'Crash Alert - Urgent',
-      time: '2 minutes ago',
-      location: 'Kampala Road, near Garden City',
-      status: AlertStatus.urgent,
-      isResolved: false,
-    ),
-    AlertItem(
-      id: '2',
-      title: 'Minor Incident',
-      time: '15 minutes ago',
-      location: 'Jinja Road, Stage',
-      status: AlertStatus.info,
-      isResolved: false,
-    ),
-    AlertItem(
-      id: '3',
-      title: 'Resolved: Breakdown',
-      time: '1 hour ago',
-      location: 'Entebbe Road',
-      status: AlertStatus.resolved,
-      isResolved: true,
-    ),
-  ];
+  List<AlertItem> alerts = [];
+  bool _isLoading = true;
 
   @override
   Widget build(BuildContext context) {
