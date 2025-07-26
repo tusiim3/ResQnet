@@ -1,6 +1,6 @@
-# ResQnet
+# Smart Arduino Helmet
 
-ResQnet is an embedded system designed to improve motorcycle rider safety by reducing response times in case of emergencies. It combines sensors and microcontrollers to detect helmet usage, monitor rider conditions, and trigger smart alerts. Collected data is sent to a companion mobile app, providing real-time notifications, accident alerts, and analytics for both riders and emergency contacts.
+Smart Arduino Helmet is an embedded system designed to improve motorcycle rider safety by reducing response times in case of emergencies. It combines sensors and microcontrollers to detect helmet usage, monitor rider conditions, and trigger smart alerts. Collected data is sent to a companion mobile app, providing real-time notifications, accident alerts, and analytics for both riders and emergency contacts.
 
 ## Features
 
