@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class UserService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -21,11 +22,32 @@ class UserService {
   // This is crucial for fetching the currently logged-in user's profile information.
   Future<Map<String, dynamic>?> getUserData(String uid) async {
     try {
-      // Fetch the document directly using the UID as the document ID
+      // First, try to fetch the document directly using the UID as the document ID
       DocumentSnapshot doc = await _db.collection('users').doc(uid).get();
       if (doc.exists) {
         return doc.data() as Map<String, dynamic>?;
       }
+      
+      // If no document found with UID as document ID, try to find by email
+      // This is a fallback for users created before the UID-based system
+      try {
+        // Get the current user's email from Firebase Auth
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null && user.email != null) {
+          QuerySnapshot emailQuery = await _db
+              .collection('users')
+              .where('email', isEqualTo: user.email)
+              .limit(1)
+              .get();
+          
+          if (emailQuery.docs.isNotEmpty) {
+            return emailQuery.docs.first.data() as Map<String, dynamic>?;
+          }
+        }
+      } catch (emailError) {
+        print('Error searching by email: $emailError');
+      }
+      
       return null;
     } catch (e) {
       print('Error getting user data: $e');
@@ -41,15 +63,10 @@ class UserService {
     required String phone,
     required String hardwareContact,
     required String password,
+    String? uid, // Optional UID parameter
   }) async {
-    // When saving new user data, it's often good practice to use the
-    // Firebase Auth UID as the document ID in Firestore for easier retrieval.
-    // However, based on your `getUserByPhone` and current `saveUserDataCustom`,
-    // it seems you're using `add` which creates an auto-generated ID.
-    // If you intend to fetch by UID, you should store the UID as the document ID
-    // during registration or link the user's phone to a Firebase Auth user.
-    // For now, I'll keep the `add` method as it was, but be aware of this.
-    await _db.collection('users').add({
+    // If UID is provided, use it as document ID, otherwise use add() for auto-generated ID
+    Map<String, dynamic> userData = {
       'fullName': fullName,
       'username': username,
       'email': email,
@@ -57,7 +74,17 @@ class UserService {
       'hardwareContact': hardwareContact,
       'password': password, // Remember: Store hashed passwords in production!
       'createdAt': FieldValue.serverTimestamp(),
-    });
+    };
+
+    if (uid != null) {
+      // Use the provided UID as the document ID
+      await _db.collection('users').doc(uid).set(userData);
+      print('User data saved with UID: $uid');
+    } else {
+      // Use auto-generated document ID (original behavior)
+      await _db.collection('users').add(userData);
+      print('User data saved with auto-generated ID');
+    }
   }
 
   // Update existing user data by User ID (UID)

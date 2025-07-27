@@ -231,14 +231,19 @@ class _HomeTabState extends State<_HomeTab> {
         
         if (userData != null && mounted) {
           setState(() {
-            userName = userData['username'] ?? userData['fullName'] ?? 'Rider';
+            print('DEBUG: Raw user data fields: ${userData.keys.toList()}');
+            print('DEBUG: Checking username field: ${userData['username']}');
+            print('DEBUG: Checking fullName field: ${userData['fullName']}');
+            print('DEBUG: Checking name field: ${userData['name']}');
+            
+            userName = userData['username'] ?? userData['fullName'] ?? userData['name'] ?? 'Rider';
             userEmail = userData['email'] ?? '';
             // You can add trip data to Firebase later
             tripsToday = userData['tripsToday'] ?? 0;
             totalTrips = userData['totalTrips'] ?? 0;
             _isLoading = false;
           });
-          print('DEBUG: User data loaded successfully');
+          print('DEBUG: User data loaded successfully with userName: $userName');
         } else {
           print('DEBUG: No user data found or component unmounted');
           if (mounted) {

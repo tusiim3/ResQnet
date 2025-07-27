@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:resqnet/screens/home_screen.dart';
 import 'package:resqnet/services/user_service.dart';
 import 'package:resqnet/services/sms_service.dart';
+import 'package:resqnet/services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
@@ -28,6 +29,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
 
   final UserService _userService = UserService();
+  final AuthService _authService = AuthService();
 
   @override
   void dispose() {
@@ -457,7 +459,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
         throw 'Failed to register with hardware';
       }
 
-      // Save user data to Firestore
+      // Create Firebase Auth user first
+      final authUser = await _authService.register(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
+      );
+
+      if (authUser == null) {
+        throw 'Failed to create user account';
+      }
+
+      // Save user data to Firestore using the Firebase Auth UID
       await _userService.saveUserDataCustom(
         fullName: _nameController.text.trim(),
         username: _usernameController.text.trim(),
@@ -465,6 +477,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         phone: _phoneController.text.trim(),
         hardwareContact: _helmetContactController.text.trim(),
         password: _passwordController.text.trim(),
+        uid: authUser.uid, // Pass the Firebase Auth UID
       );
 
       if (!mounted) return;
