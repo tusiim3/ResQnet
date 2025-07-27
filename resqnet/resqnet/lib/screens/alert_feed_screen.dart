@@ -2,9 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:resqnet/screens/map_screen.dart';
-import '../services/nearby_rider_alert_service.dart';
-import '../services/push_notification_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../services/location_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AlertFeedScreen extends StatefulWidget {
@@ -17,200 +16,6 @@ class AlertFeedScreen extends StatefulWidget {
 }
 
 class _AlertFeedScreenState extends State<AlertFeedScreen> {
-  final NearbyRiderAlertService _alertService = NearbyRiderAlertService();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  List<AlertItem> alerts = [];
-  bool _isLoading = true;
-  List<String> _previousAlertIds = []; // Track previous alerts to detect new ones
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeNotifications();
-    _loadAlerts();
-  }
-
-  Future<void> _initializeNotifications() async {
-    await PushNotificationService.initialize();
-  }
-
-  Future<void> _loadAlerts() async {
-    try {
-      final user = _auth.currentUser;
-      if (user != null) {
-        // Get rider alerts from Firebase
-        final alertsStream = _alertService.getRiderAlerts(user.uid);
-        alertsStream.listen((snapshot) {
-          if (mounted) {
-            final newAlerts = snapshot.docs.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              return AlertItem.fromFirebase(doc.id, data);
-            }).toList();
-            
-            // Check for new alerts and show push notifications
-            _checkForNewAlerts(newAlerts);
-            
-            setState(() {
-              alerts = newAlerts;
-              _isLoading = false;
-            });
-          }
-        });
-      }
-    } catch (e) {
-      print('Error loading alerts: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  // Check for new alerts and show push notifications
-  void _checkForNewAlerts(List<AlertItem> newAlerts) {
-    // Get IDs of new alerts that weren't in previous list
-    final newAlertIds = newAlerts.map((alert) => alert.id).toList();
-    final newAlertsToNotify = newAlerts.where((alert) => 
-      !_previousAlertIds.contains(alert.id) && 
-      alert.status == AlertStatus.urgent && 
-      !alert.isResolved
-    ).toList();
-
-    // Show push notification for each new urgent alert
-    for (var alert in newAlertsToNotify) {
-      _showEmergencyPushNotification(alert);
-    }
-
-    // Update previous alert IDs for next check
-    _previousAlertIds = newAlertIds;
-  }
-
-  // Show emergency push notification
-  Future<void> _showEmergencyPushNotification(AlertItem alert) async {
-    final distance = _extractDistance(alert.location);
-    
-    await PushNotificationService.showEmergencyAlert(
-      title: '🚨 Emergency Alert Nearby!',
-      body: 'Emergency ${distance} away. Tap to respond or dismiss.',
-      location: alert.location,
-      distance: distance,
-      alertId: alert.id,
-    );
-
-    // Also show an in-app dialog if the app is active
-    if (mounted) {
-      _showInAppEmergencyDialog(alert);
-    }
-  }
-
-  // Extract distance from location string
-  String _extractDistance(String location) {
-    final regex = RegExp(r'\(([^)]+)km away\)');
-    final match = regex.firstMatch(location);
-    return match?.group(1) != null ? '${match!.group(1)}km' : 'Unknown distance';
-  }
-
-  // Show in-app emergency dialog
-  void _showInAppEmergencyDialog(AlertItem alert) {
-    showDialog(
-      context: context,
-      barrierDismissible: false, // Force user to make a choice
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
-          backgroundColor: Colors.white,
-          title: Row(
-            children: [
-              const Text('🚨', style: TextStyle(fontSize: 24)),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'Emergency Alert!',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFFE74C3C),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                alert.title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Text('📍', style: TextStyle(fontSize: 16)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      alert.location,
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'A rider nearby needs help. Can you respond?',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF7F8C8D),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _dismissAlert(alert);
-              },
-              child: const Text(
-                'Ignore',
-                style: TextStyle(
-                  color: Color(0xFF95A5A6),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _handleResponse(alert);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2ECC71),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text(
-                'Respond',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -284,39 +89,107 @@ class _AlertFeedScreenState extends State<AlertFeedScreen> {
           ),
         ),
       ),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
-        : alerts.isEmpty 
-          ? const Center(
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: LocationService.getAllActiveEmergencies(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          
+          if (snapshot.hasError) {
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.notifications_off, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'No alerts yet',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'You\'ll see emergency alerts from nearby riders here',
-                    style: TextStyle(fontSize: 14, color: Colors.grey),
-                    textAlign: TextAlign.center,
+                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text('Error loading alerts: ${snapshot.error}'),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => setState(() {}),
+                    child: const Text('Retry'),
                   ),
                 ],
               ),
-            )
-          : RefreshIndicator(
-              onRefresh: _refreshAlerts,
-              child: ListView.builder(
-                padding: const EdgeInsets.all(20),
-                itemCount: alerts.length,
-                itemBuilder: (context, index) {
-                  return _buildAlertCard(alerts[index]);
-                },
+            );
+          }
+          
+          final emergencies = snapshot.data ?? [];
+          
+          if (emergencies.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check_circle_outline, size: 64, color: Colors.green),
+                  SizedBox(height: 16),
+                  Text(
+                    'No active emergency alerts',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'All riders are safe!',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
               ),
+            );
+          }
+          
+          return RefreshIndicator(
+            onRefresh: _refreshAlerts,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(20),
+              itemCount: emergencies.length,
+              itemBuilder: (context, index) {
+                final emergency = emergencies[index];
+                final alertItem = _createAlertItemFromEmergency(emergency);
+                return _buildAlertCard(alertItem);
+              },
             ),
+          );
+        },
+      ),
     );
+  }
+
+  // Helper method to convert emergency data to AlertItem
+  AlertItem _createAlertItemFromEmergency(Map<String, dynamic> emergency) {
+    final timestamp = emergency['timestamp'] as Timestamp?;
+    final timeAgo = timestamp != null 
+        ? _formatTimeAgo(timestamp.toDate())
+        : 'Unknown time';
+    
+    final location = 'Lat: ${emergency['latitude']?.toStringAsFixed(4)}, Lng: ${emergency['longitude']?.toStringAsFixed(4)}';
+    
+    return AlertItem(
+      id: emergency['id'] ?? '',
+      title: emergency['additionalInfo'] ?? 'Emergency Alert',
+      time: timeAgo,
+      location: location,
+      status: emergency['isResolved'] == true ? AlertStatus.resolved : AlertStatus.urgent,
+      isResolved: emergency['isResolved'] ?? false,
+      latitude: emergency['latitude']?.toDouble(),
+      longitude: emergency['longitude']?.toDouble(),
+      riderUsername: emergency['riderUsername'] ?? 'Unknown Rider',
+    );
+  }
+
+  // Helper method to format time ago
+  String _formatTimeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+    
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    } else if (difference.inHours < 1) {
+      return '${difference.inMinutes} minutes ago';
+    } else if (difference.inDays < 1) {
+      return '${difference.inHours} hours ago';
+    } else {
+      return '${difference.inDays} days ago';
+    }
   }
 
   Widget _buildAlertCard(AlertItem alert) {
@@ -392,6 +265,27 @@ class _AlertFeedScreenState extends State<AlertFeedScreen> {
                       fontSize: 14,
                       color: Color(0xFF7F8C8D),
                     ),
+                  ),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 10),
+            
+            // Rider info
+            Row(
+              children: [
+                const Text(
+                  '👤',
+                  style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Rider: ${alert.riderUsername}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF2C3E50),
                   ),
                 ),
               ],
@@ -558,66 +452,126 @@ class _AlertFeedScreenState extends State<AlertFeedScreen> {
     );
   }
 
-  void _dismissAlert(AlertItem alert) async {
+  void _dismissAlert(AlertItem alert) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          title: const Text(
+            'Dismiss Alert',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF2C3E50),
+            ),
+          ),
+          content: const Text(
+            'Are you sure you want to dismiss this alert?',
+            style: TextStyle(
+              fontSize: 16,
+              color: Color(0xFF7F8C8D),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  color: Color(0xFF95A5A6),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _handleDismiss(alert);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE74C3C),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'Dismiss',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _handleDismiss(AlertItem alert) {
+    // Update the emergency as resolved in Firebase
+    _updateEmergencyStatus(alert.id, true);
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Alert dismissed'),
+        backgroundColor: Color(0xFF95A5A6),
+      ),
+    );
+  }
+
+  void _updateEmergencyStatus(String emergencyId, bool isResolved) async {
     try {
-      // Mark alert as read/ignored in Firebase
-      await _alertService.updateRiderAlertStatus(
-        alertId: alert.id,
-        status: 'ignored',
-        actionTaken: 'User dismissed alert',
-      );
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Alert dismissed'),
-          backgroundColor: Color(0xFF95A5A6),
-        ),
-      );
+      await FirebaseFirestore.instance
+          .collection('emergency_locations')
+          .doc(emergencyId)
+          .update({'isResolved': isResolved});
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to dismiss: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      print('Error updating emergency status: $e');
     }
   }
 
-  void _handleResponse(AlertItem alert) async {
-    try {
-      // Update alert status in Firebase
-      await _alertService.updateRiderAlertStatus(
-        alertId: alert.id,
-        status: 'responding',
-        actionTaken: 'User confirmed response to emergency',
-      );
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Response confirmed! Heading to ${alert.location}'),
-          backgroundColor: const Color(0xFF2ECC71),
+  void _handleResponse(AlertItem alert) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Navigating to emergency at ${alert.location}'),
+        backgroundColor: const Color(0xFF2ECC71),
+      ),
+    );
+    
+    // Navigate to map screen with emergency location for navigation
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MapScreen(
+          toggleTheme: widget.toggleTheme, 
+          isDarkTheme: widget.isDarkTheme,
+          emergencyLocation: alert.latitude != null && alert.longitude != null
+              ? LatLng(alert.latitude!, alert.longitude!)
+              : null,
+          emergencyDescription: alert.title,
         ),
-      );
-      
-      // Navigate to map screen with alert location
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => MapScreen(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to respond: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+      ),
+    );
   }
 
   Future<void> _refreshAlerts() async {
-    await _loadAlerts();
+    // The StreamBuilder will automatically refresh when new data arrives
+    // We can just show a brief loading indicator
+    await Future.delayed(const Duration(seconds: 1));
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Alert feed refreshed'),
+        duration: Duration(seconds: 1),
+        backgroundColor: Color(0xFF2ECC71),
+      ),
+    );
   }
 }
 
@@ -629,6 +583,9 @@ class AlertItem {
   final String location;
   final AlertStatus status;
   final bool isResolved;
+  final double? latitude;
+  final double? longitude;
+  final String riderUsername;
 
   AlertItem({
     required this.id,
@@ -637,63 +594,10 @@ class AlertItem {
     required this.location,
     required this.status,
     required this.isResolved,
+    this.latitude,
+    this.longitude,
+    required this.riderUsername,
   });
-
-  // Factory constructor to create AlertItem from Firebase data
-  factory AlertItem.fromFirebase(String id, Map<String, dynamic> data) {
-    final timestamp = data['timestamp'] as Timestamp?;
-    final timeAgo = timestamp != null 
-        ? _timeAgo(timestamp.toDate())
-        : 'Unknown time';
-    
-    // Determine alert status based on Firebase data
-    AlertStatus status = AlertStatus.urgent; // Default for emergencies
-    if (data['status'] == 'responding') {
-      status = AlertStatus.info;
-    } else if (data['status'] == 'ignored') {
-      status = AlertStatus.resolved;
-    }
-
-    // Create location description
-    final emergencyLocation = data['emergencyLocation'] as Map<String, dynamic>?;
-    String location = 'Unknown location';
-    if (emergencyLocation != null) {
-      final lat = emergencyLocation['latitude'];
-      final lng = emergencyLocation['longitude'];
-      location = '${lat?.toStringAsFixed(4)}, ${lng?.toStringAsFixed(4)}';
-      
-      // Add distance if available
-      final distance = data['distanceKm'];
-      if (distance != null) {
-        location += ' (${distance.toStringAsFixed(1)}km away)';
-      }
-    }
-
-    return AlertItem(
-      id: id,
-      title: '🚨 ${data['alertType'] ?? 'Emergency'} Alert',
-      time: timeAgo,
-      location: location,
-      status: status,
-      isResolved: data['status'] == 'ignored' || data['status'] == 'resolved',
-    );
-  }
-
-  // Helper method to calculate time ago
-  static String _timeAgo(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays} day${difference.inDays == 1 ? '' : 's'} ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours} hour${difference.inHours == 1 ? '' : 's'} ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes} minute${difference.inMinutes == 1 ? '' : 's'} ago';
-    } else {
-      return 'Just now';
-    }
-  }
 }
 
 enum AlertStatus {
@@ -701,4 +605,3 @@ enum AlertStatus {
   info,
   resolved,
 }
-

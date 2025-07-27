@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:resqnet/screens/map_screen.dart';
-import 'package:resqnet/screens/alert_feed_screen.dart';
-import 'package:resqnet/screens/profile_screen.dart';
+import 'dart:async';
+import 'map_screen.dart';
+import 'alert_feed_screen.dart';
+import 'profile_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/location_service.dart';
 import '../services/user_service.dart';
@@ -11,14 +12,26 @@ import 'package:firebase_auth/firebase_auth.dart';
 class HomeScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
   final bool isDarkTheme;
-  const HomeScreen({super.key, required this.toggleTheme, required this.isDarkTheme});
+  final int initialTabIndex;
+  const HomeScreen({
+    super.key, 
+    required this.toggleTheme, 
+    required this.isDarkTheme,
+    this.initialTabIndex = 0,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialTabIndex;
+  }
 
   List<Widget> get _screens => [
     _HomeTab(toggleTheme: widget.toggleTheme, isDarkTheme: widget.isDarkTheme),
@@ -124,6 +137,8 @@ class _HomeTab extends StatefulWidget {
 class _HomeTabState extends State<_HomeTab> {
   final UserService _userService = UserService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final LocationService _locationService = LocationService();
+  Timer? _locationTimer;
   
   // User data that will be loaded from Firebase
   String userName = "Loading...";
@@ -142,13 +157,78 @@ class _HomeTabState extends State<_HomeTab> {
   void initState() {
     super.initState();
     _loadUserData();
+    _updateUserPresence(); // Add user presence tracking
+    _startLocationTracking(); // Start periodic location updates
+    
+    // Fallback: Stop loading after 8 seconds if nothing happens
+    Future.delayed(Duration(seconds: 8), () {
+      if (mounted && _isLoading) {
+        print('DEBUG: Home screen timeout - stopping loading after 8 seconds');
+        setState(() {
+          userName = 'Rider';
+          _isLoading = false;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _locationTimer?.cancel(); // Clean up timer
+    super.dispose();
+  }
+
+  // Start periodic location tracking for class demonstration
+  void _startLocationTracking() {
+    print('📍 Starting location tracking...');
+    
+    // Update location every 30 seconds for class demo
+    _locationTimer = Timer.periodic(Duration(seconds: 30), (timer) async {
+      try {
+        final location = await LocationService.getCurrentGPSLocation();
+        if (location != null && mounted) {
+          await _locationService.saveLocation(
+            latitude: location.latitude,
+            longitude: location.longitude,
+          );
+          print('📍 Location updated: ${location.latitude}, ${location.longitude}');
+        }
+      } catch (e) {
+        print('Error updating location: $e');
+      }
+    });
+
+    // Also update location immediately when app starts
+    _updateLocationNow();
+  }
+
+  // Update location immediately
+  Future<void> _updateLocationNow() async {
+    try {
+      final location = await LocationService.getCurrentGPSLocation();
+      if (location != null) {
+        await _locationService.saveLocation(
+          latitude: location.latitude,
+          longitude: location.longitude,
+        );
+        print('📍 Initial location saved: ${location.latitude}, ${location.longitude}');
+      }
+    } catch (e) {
+      print('Error saving initial location: $e');
+    }
   }
 
   Future<void> _loadUserData() async {
+    print('DEBUG: Loading user data...');
     try {
       final User? user = _auth.currentUser;
+      print('DEBUG: Current user: ${user?.uid ?? 'No user logged in'}');
+      
       if (user != null) {
+        print('DEBUG: Getting user data for: ${user.uid}');
         final userData = await _userService.getUserData(user.uid);
+        print('DEBUG: User data received: $userData');
+        
         if (userData != null && mounted) {
           setState(() {
             userName = userData['username'] ?? userData['fullName'] ?? 'Rider';
@@ -156,6 +236,23 @@ class _HomeTabState extends State<_HomeTab> {
             // You can add trip data to Firebase later
             tripsToday = userData['tripsToday'] ?? 0;
             totalTrips = userData['totalTrips'] ?? 0;
+            _isLoading = false;
+          });
+          print('DEBUG: User data loaded successfully');
+        } else {
+          print('DEBUG: No user data found or component unmounted');
+          if (mounted) {
+            setState(() {
+              userName = 'Rider';
+              _isLoading = false;
+            });
+          }
+        }
+      } else {
+        print('DEBUG: No user logged in, using default name');
+        if (mounted) {
+          setState(() {
+            userName = 'Rider';
             _isLoading = false;
           });
         }
@@ -168,6 +265,17 @@ class _HomeTabState extends State<_HomeTab> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _updateUserPresence() async {
+    print('DEBUG: Updating user presence...');
+    try {
+      final locationService = LocationService();
+      await locationService.updateUserPresence();
+      print('DEBUG: User presence updated successfully');
+    } catch (e) {
+      print('Error updating user presence: $e');
     }
   }
 

@@ -5,6 +5,7 @@ import 'package:resqnet/screens/Home_Screen.dart';
 import 'package:resqnet/services/user_service.dart';
 import 'package:resqnet/services/sms_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 
 class LoginScreen extends StatefulWidget {
@@ -439,6 +440,9 @@ class _LoginScreenState extends State<LoginScreen> {
       final userData = userSnapshot.data() as Map<String, dynamic>;
       if (userData['password'] == password) {
         
+        // Sign in anonymously with Firebase Auth for location services
+        await FirebaseAuth.instance.signInAnonymously();
+        
         // get the user's UID from the document id
         final uid = userSnapshot.id;
         final hardwareContact = userData['hardwareContact'] as String?;
@@ -451,6 +455,10 @@ class _LoginScreenState extends State<LoginScreen> {
         } else {
           print("⚠️ No hardwareContact found in user data for UID: $uid");
         }
+
+        // Save the original user document ID for location tracking
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('original_user_id', uid);
 
         // load the trustednumber
         await SmsService.loadTrustedNumberForUser(uid);

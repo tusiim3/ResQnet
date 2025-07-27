@@ -3,8 +3,10 @@ import 'package:shared_preferences/shared_preferences.dart';  // Fixed import li
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'screens/Login_Screen.dart'; // Ensure this import path is correct
+import 'screens/home_screen.dart';
 import 'services/sms_service.dart';
 import 'services/push_notification_service.dart';
+import 'services/navigation_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -34,19 +36,34 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: NavigationService.navigatorKey,
       // Consider setting themeMode based on isDarkTheme here
       theme: ThemeData.light(),
       darkTheme: ThemeData.dark(),
       themeMode: isDarkTheme ? ThemeMode.dark : ThemeMode.light,
-      home: LoginScreen(
-        toggleTheme: (bool isDark) {
-          // This toggleTheme function currently does nothing in MyApp.
-          // You might want to pass it down to LoginScreen to actually change the theme.
-          // For now, it's a placeholder.
+      initialRoute: '/login',
+      routes: {
+        '/login': (context) => LoginScreen(
+          toggleTheme: (bool isDark) {
+            // This toggleTheme function currently does nothing in MyApp.
+            // You might want to pass it down to LoginScreen to actually change the theme.
+            // For now, it's a placeholder.
+          },
+          isDarkTheme: isDarkTheme,
+          smsPermissionGranted: smsPermissionGranted,
+        ),
+        '/home': (context) {
+          final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+          final tabIndex = args?['tabIndex'] as int?;
+          return HomeScreen(
+            toggleTheme: (bool isDark) {
+              // Handle theme toggle
+            },
+            isDarkTheme: isDarkTheme,
+            initialTabIndex: tabIndex ?? 0,
+          );
         },
-        isDarkTheme: isDarkTheme,
-        smsPermissionGranted: smsPermissionGranted,
-      ),
+      },
     );
   }
 }
