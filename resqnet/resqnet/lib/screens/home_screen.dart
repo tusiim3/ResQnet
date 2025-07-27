@@ -5,6 +5,7 @@ import 'package:resqnet/screens/profile_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/location_service.dart';
 import '../services/user_service.dart';
+import '../services/nearby_rider_alert_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -601,6 +602,19 @@ class _HomeTabState extends State<_HomeTab> {
                     longitude: location.longitude,
                     additionalInfo: 'Manual emergency alert triggered',
                   );
+                  
+                  // Alert nearby riders within 3km
+                  final nearbyAlertService = NearbyRiderAlertService();
+                  final user = FirebaseAuth.instance.currentUser;
+                  if (user != null) {
+                    final notifiedRiders = await nearbyAlertService.alertNearbyRiders(
+                      emergencyAlertId: user.uid,
+                      latitude: location.latitude,
+                      longitude: location.longitude,
+                      emergencyDescription: 'Manual emergency alert triggered by user',
+                    );
+                    print('Notified ${notifiedRiders.length} nearby riders');
+                  }
                   
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(

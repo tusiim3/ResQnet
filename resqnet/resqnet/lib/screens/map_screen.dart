@@ -153,11 +153,37 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              // Could add navigation to emergency location here
+              // Navigate to emergency location
+              _goToEmergencyLocation(emergency);
             },
             child: const Text('Get Directions'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _goToEmergencyLocation(Map<String, dynamic> emergency) async {
+    final lat = emergency['latitude'];
+    final lng = emergency['longitude'];
+    final emergencyLocation = LatLng(lat, lng);
+    
+    // Get the map controller and animate camera to emergency location
+    final GoogleMapController controller = await _controller.future;
+    controller.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: emergencyLocation,
+          zoom: 18.0, // Close zoom for emergency
+        ),
+      ),
+    );
+    
+    // Show confirmation
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Navigating to emergency location...'),
+        backgroundColor: const Color(0xFFE74C3C),
       ),
     );
   }

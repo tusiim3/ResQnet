@@ -2,7 +2,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:telephony/telephony.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'location_service.dart';
+import 'nearby_rider_alert_service.dart';
 
 
 class SmsService {
@@ -131,6 +133,19 @@ class SmsService {
         additionalInfo: 'Emergency detected via SMS from hardware',
       );
       print('✅ Emergency saved to Firebase');
+
+      // Alert nearby riders within 3km
+      final nearbyAlertService = NearbyRiderAlertService();
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final notifiedRiders = await nearbyAlertService.alertNearbyRiders(
+          emergencyAlertId: user.uid,
+          latitude: position.latitude,
+          longitude: position.longitude,
+          emergencyDescription: 'Crash detected by smart helmet hardware',
+        );
+        print('✅ Notified ${notifiedRiders.length} nearby riders');
+      }
 
       // Find nearest hospitals (now getting 3)
       final hospitals = await LocationService.findNearestHospitals(

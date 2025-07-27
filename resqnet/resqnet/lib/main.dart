@@ -4,12 +4,16 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'screens/Login_Screen.dart'; // Ensure this import path is correct
 import 'services/sms_service.dart';
+import 'services/push_notification_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Initialize push notifications
+  await PushNotificationService.initialize();
 
   SmsService.initSmsListener();
 
