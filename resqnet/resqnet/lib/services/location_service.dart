@@ -181,6 +181,25 @@ class LocationService {
       return;
     }
 
+    // Get user's actual name from SharedPreferences or Firestore
+    String riderName = 'Unknown Rider';
+    try {
+      // First try to get from SharedPreferences (faster)
+      final savedUserName = prefs.getString('user_name');
+      if (savedUserName != null && savedUserName.isNotEmpty) {
+        riderName = savedUserName;
+      } else {
+        // Fallback: fetch from Firestore
+        final doc = await _db.collection('users').doc(userId).get();
+        if (doc.exists) {
+          final userData = doc.data() as Map<String, dynamic>;
+          riderName = userData['fullName'] ?? userData['username'] ?? 'Unknown Rider';
+        }
+      }
+    } catch (e) {
+      print('Error getting rider name: $e');
+    }
+
     await _db.collection('emergency_locations').add({
       'userId': userId,
       'latitude': latitude,
@@ -191,10 +210,46 @@ class LocationService {
       'isEmergency': true,
       'isResolved': false,
       'responseTime': null,
-      'riderUsername': 'Rider', // Using generic name for simplicity
+      'riderUsername': riderName, // Now uses actual user name
+      'riderName': riderName, // Also store as riderName for compatibility
     });
     
-    print('Emergency alert created for user: $userId');
+    print('Emergency alert created for user: $userId with name: $riderName');
+  }
+
+  // One-time function to update existing emergency alerts with proper rider names
+  Future<void> updateExistingEmergencyAlerts() async {
+    try {
+      final emergencies = await _db.collection('emergency_locations')
+          .where('riderUsername', isEqualTo: 'Rider')
+          .get();
+      
+      for (final doc in emergencies.docs) {
+        final data = doc.data();
+        final userId = data['userId'];
+        
+        if (userId != null) {
+          // Get user's actual name
+          final userDoc = await _db.collection('users').doc(userId).get();
+          if (userDoc.exists) {
+            final userData = userDoc.data() as Map<String, dynamic>;
+            final riderName = userData['fullName'] ?? userData['username'] ?? 'Unknown Rider';
+            
+            // Update the emergency alert
+            await doc.reference.update({
+              'riderUsername': riderName,
+              'riderName': riderName,
+            });
+            
+            print('Updated emergency alert ${doc.id} with rider name: $riderName');
+          }
+        }
+      }
+      
+      print('✅ Finished updating existing emergency alerts');
+    } catch (e) {
+      print('Error updating existing emergency alerts: $e');
+    }
   }
 
   // Get all active emergencies for map display

@@ -7,6 +7,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
 // Import Firestore
 import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'Login_Screen.dart'; // Ensure this import path is correct
 import '../services/user_service.dart'; // Import your UserService
 
@@ -23,15 +24,18 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
-  // Initial values, these will be updated from Firestore
-  String userName = "Loading...";
-  String userEmail = "Loading...";
-  String userPhone = "Loading...";
-  String userLocation = "Loading...";
-  String userHardwareContact = "Loading..."; // New field for hardware contact
+  // User data variables
+  String userName = "";
+  String userEmail = "";
+  String userPhone = "";
+  String userLocation = "";
+  String userHardwareContact = ""; // New field for hardware contact
+  String currentUserId = "";
+
+  //Trip statistics
   int totalTrips = 0;
-  int responseRate = 0;
-  double rating = 0.0;
+  int responseRate = 85; // Default response rate
+  double rating = 4.5; // Default rating
 
   File? _profileImage;
   bool notificationsEnabled = false;
@@ -146,36 +150,99 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   }
 
 
-  /// Loads user profile data from Firestore and SharedPreferences.
+  /// Loads user profile data from Firebase and SharedPreferences.
   Future<void> _loadProfileData() async {
     setState(() {
-      _isLoadingProfile = true; // Start loading
+      _isLoadingProfile = true;
     });
 
+    try {
+      // Get the current user ID from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getString('logged_in_user_id');
+      
+      if (userId == null) {
+        // User not logged in, redirect to login
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => LoginScreen(
+                toggleTheme: widget.toggleTheme,
+                isDarkTheme: widget.isDarkTheme,
+                smsPermissionGranted: false,
+              ),
+            ),
+          );
+        }
+        return;
+      }
 
-    final User? user = _auth.currentUser;
-    if (user != null) {
-      final userData = await _userService.getUserData(user.uid); // Fetch user data by UID
+      currentUserId = userId;
+
+      // Fetch user data from Firebase
+      final userData = await _userService.getUserData(userId);
+      
       if (userData != null) {
         setState(() {
-          userName = userData['fullName'] ?? 'N/A';
-          userEmail = userData['email'] ?? 'N/A';
-          userPhone = userData['phone'] ?? 'N/A';
-          userHardwareContact = userData['hardwareContact'] ?? 'N/A'; // Get hardware contact
-          // You might fetch totalTrips, responseRate, rating from Firestore as well if they are stored there
-          // For now, keeping them as default or existing values if not in Firestore
+          userName = userData['fullName'] ?? userData['username'] ?? 'User';
+          userEmail = userData['email'] ?? '';
+          userPhone = userData['phone'] ?? '';
+          userLocation = userData['userLocation'] ?? '';
+          userHardwareContact = userData['hardwareContact'] ?? '';
+          totalTrips = userData['totalTrips'] ?? 0;
+          // You can add more fields from Firebase as needed
+        });
+
+        // Update local SharedPreferences with fresh data
+        await prefs.setString('user_name', userName);
+        await prefs.setString('user_email', userEmail);
+        await prefs.setString('user_phone', userPhone);
+        
+        print("✅ Profile data loaded successfully for user: $userName");
+      } else {
+        print("⚠️ No user data found for ID: $userId");
+        // Set default values
+        setState(() {
+          userName = "User";
+          userEmail = "No email";
+          userPhone = "No phone";
+          userLocation = "No location";
+          userHardwareContact = "No hardware contact";
         });
       }
-    }
 
-    // Load local preferences as well
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      notificationsEnabled = prefs.getBool('notificationsEnabled') ?? false;
-      locationEnabled = prefs.getBool('locationEnabled') ?? false;
-      currentLocation = prefs.getString('currentLocation') ?? '';
-      _isLoadingProfile = false; // End loading
-    });
+      // Load local preferences
+      setState(() {
+        notificationsEnabled = prefs.getBool('notificationsEnabled') ?? false;
+        locationEnabled = prefs.getBool('locationEnabled') ?? false;
+        currentLocation = prefs.getString('currentLocation') ?? '';
+      });
+      
+    } catch (e) {
+      print("❌ Error loading profile data: $e");
+      // Set fallback values
+      setState(() {
+        userName = "User";
+        userEmail = "Error loading data";
+        userPhone = "Error loading data";
+        userLocation = "Error loading data";
+        userHardwareContact = "Error loading data";
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading profile: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isLoadingProfile = false;
+      });
+    }
   }
 
 
@@ -195,46 +262,136 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     final emailCtrl = TextEditingController(text: userEmail);
     final phoneCtrl = TextEditingController(text: userPhone);
     final locationCtrl = TextEditingController(text: userLocation);
-    final hardwareContactCtrl = TextEditingController(text: userHardwareContact); // Controller for hardware contact
+    final hardwareContactCtrl = TextEditingController(text: userHardwareContact);
 
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Edit Profile'),
-        content: SingleChildScrollView( // Use SingleChildScrollView for scrollable content
+        content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Full Name')),
-              TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: 'Email')),
-              TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Phone')),
-              TextField(controller: locationCtrl, decoration: const InputDecoration(labelText: 'Location')),
-              TextField(controller: hardwareContactCtrl, decoration: const InputDecoration(labelText: 'Hardware Contact')), // Hardware Contact field
+              TextField(
+                controller: nameCtrl, 
+                decoration: const InputDecoration(labelText: 'Full Name')
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: emailCtrl, 
+                decoration: const InputDecoration(labelText: 'Email'),
+                keyboardType: TextInputType.emailAddress,
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: phoneCtrl, 
+                decoration: const InputDecoration(labelText: 'Phone'),
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: locationCtrl, 
+                decoration: const InputDecoration(labelText: 'Location')
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: hardwareContactCtrl, 
+                decoration: const InputDecoration(labelText: 'Hardware Contact'),
+                keyboardType: TextInputType.phone,
+              ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              // Dispose controllers
+              nameCtrl.dispose();
+              emailCtrl.dispose();
+              phoneCtrl.dispose();
+              locationCtrl.dispose();
+              hardwareContactCtrl.dispose();
+              Navigator.pop(context);
+            }, 
+            child: const Text('Cancel')
+          ),
           ElevatedButton(
             onPressed: () async {
-              final User? user = _auth.currentUser;
-              if (user != null) {
-                // Update user data in Firestore
-                await _userService.updateUserData(
-                  user.uid,
-                  {
-                    'fullName': nameCtrl.text,
-                    'email': emailCtrl.text,
-                    'phone': phoneCtrl.text,
-                    'userLocation': locationCtrl.text, // Assuming you want to save this
-                    'hardwareContact': hardwareContactCtrl.text, // Save hardware contact
-                  },
-                );
-                // Refresh local state after saving
-                await _loadProfileData();
-              }
-              if (mounted) {
-                Navigator.pop(context);
+              // Show loading indicator
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(child: CircularProgressIndicator()),
+              );
+
+              try {
+                // Prepare update data
+                Map<String, dynamic> updateData = {
+                  'fullName': nameCtrl.text.trim(),
+                  'email': emailCtrl.text.trim(),
+                  'phone': phoneCtrl.text.trim(),
+                  'userLocation': locationCtrl.text.trim(),
+                  'hardwareContact': hardwareContactCtrl.text.trim(),
+                  'lastUpdated': Timestamp.now(),
+                };
+
+                // Update user data in Firebase
+                await _userService.updateUserData(currentUserId, updateData);
+
+                // Update local state
+                setState(() {
+                  userName = nameCtrl.text.trim();
+                  userEmail = emailCtrl.text.trim();
+                  userPhone = phoneCtrl.text.trim();
+                  userLocation = locationCtrl.text.trim();
+                  userHardwareContact = hardwareContactCtrl.text.trim();
+                });
+
+                // Update SharedPreferences
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('user_name', userName);
+                await prefs.setString('user_email', userEmail);
+                await prefs.setString('user_phone', userPhone);
+
+                // Dispose controllers
+                nameCtrl.dispose();
+                emailCtrl.dispose();
+                phoneCtrl.dispose();
+                locationCtrl.dispose();
+                hardwareContactCtrl.dispose();
+
+                if (mounted) {
+                  Navigator.pop(context); // Close loading dialog
+                  Navigator.pop(context); // Close edit dialog
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Profile updated successfully!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                print("❌ Error updating profile: $e");
+                
+                // Dispose controllers
+                nameCtrl.dispose();
+                emailCtrl.dispose();
+                phoneCtrl.dispose();
+                locationCtrl.dispose();
+                hardwareContactCtrl.dispose();
+
+                if (mounted) {
+                  Navigator.pop(context); // Close loading dialog
+                  Navigator.pop(context); // Close edit dialog
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to update profile: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               }
             },
             child: const Text('Save'),
@@ -264,18 +421,30 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Help & Support'),
-        content: const Text('• How to update profile: Tap the edit button.\n• For support email: support@resqnet.com'),
+        content: const Text(
+          '• How to update profile: Tap the edit button in Actions tab\n'
+          '• Emergency alerts: Use the emergency button on home screen\n'
+          '• Hardware setup: Ensure your helmet contact is correctly entered\n'
+          '• For support email: support@resqnet.com\n'
+          '• Emergency hotline: 911'),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
       ),
     );
   }
 
-
   /// Helper widget to display an info card.
   Widget _infoCard(String title, String value) => Column(
         children: [
-          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          Text(title, style: const TextStyle(color: Colors.grey)),
+          Text(
+            value, 
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF4A90E2))
+          ),
+          const SizedBox(height: 4),
+          Text(
+            title, 
+            style: const TextStyle(color: Colors.grey, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
         ],
       );
 
@@ -327,7 +496,16 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         ),
       ),
       body: _isLoadingProfile
-          ? const Center(child: CircularProgressIndicator()) // Show loading indicator
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading profile...', style: TextStyle(fontSize: 16)),
+                ],
+              ),
+            )
           : TabBarView(
               controller: _tabController,
               children: [
@@ -349,14 +527,22 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                 radius: 50,
                 backgroundColor: const Color(0xFF4A90E2),
                 backgroundImage: _profileImage != null ? FileImage(_profileImage!) : null,
-                child: _profileImage == null ? const Icon(Icons.person, color: Colors.white, size: 40) : null,
+                child: _profileImage == null 
+                    ? const Icon(Icons.person, color: Colors.white, size: 40) 
+                    : null,
               ),
             ),
             const SizedBox(height: 12),
-            Text(userName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            Text(userEmail, style: const TextStyle(color: Colors.grey)),
-            Text(userPhone, style: const TextStyle(color: Colors.grey)),
-            Text(userLocation, style: const TextStyle(color: Colors.grey)),
+            Text(
+              userName.isNotEmpty ? userName : 'User',
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)
+            ),
+            if (userEmail.isNotEmpty)
+              Text(userEmail, style: const TextStyle(color: Colors.grey)),
+            if (userPhone.isNotEmpty)
+              Text(userPhone, style: const TextStyle(color: Colors.grey)),
+            if (userLocation.isNotEmpty)
+              Text(userLocation, style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 16),
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -373,6 +559,37 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+            // Hardware contact info card
+            if (userHardwareContact.isNotEmpty)
+              Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.hardware, color: Color(0xFF4A90E2), size: 30),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Hardware Contact',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            Text(
+                              userHardwareContact,
+                              style: const TextStyle(color: Colors.grey, fontSize: 14),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       );
@@ -382,11 +599,13 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         children: [
           SwitchListTile(
             title: const Text('Enable Notifications'),
+            subtitle: const Text('Receive emergency and safety alerts'),
             value: notificationsEnabled,
             onChanged: (_) => _toggleNotifications(),
           ),
           SwitchListTile(
             title: const Text('Enable Location'),
+            subtitle: const Text('Share location for emergency response'),
             value: locationEnabled,
             onChanged: (_) => _toggleLocation(),
           ),
@@ -399,14 +618,14 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           if (currentLocation.isNotEmpty)
             Padding(
               padding: const EdgeInsets.all(8.0),
-              child: Text('Location: $currentLocation', style: const TextStyle(color: Colors.blueGrey)),
+              child: Card(
+                child: ListTile(
+                  leading: const Icon(Icons.location_on, color: Colors.green),
+                  title: const Text('Current Location'),
+                  subtitle: Text(currentLocation),
+                ),
+              ),
             ),
-          // Display the hardware contact
-          ListTile(
-            title: const Text('Hardware Contact'),
-            subtitle: Text(userHardwareContact),
-            leading: const Icon(Icons.hardware),
-          ),
         ],
       );
 
@@ -414,33 +633,54 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         padding: const EdgeInsets.all(16),
         children: [
           ListTile(
-            leading: const Icon(Icons.edit),
+            leading: const Icon(Icons.edit, color: Color(0xFF4A90E2)),
             title: const Text('Edit Profile'),
+            subtitle: const Text('Update your personal information'),
             onTap: _editProfile,
           ),
+          const Divider(),
           ListTile(
-            leading: const Icon(Icons.info_outline),
+            leading: const Icon(Icons.refresh, color: Colors.green),
+            title: const Text('Refresh Data'),
+            subtitle: const Text('Reload profile from server'),
+            onTap: _loadProfileData,
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.info_outline, color: Colors.blue),
             title: const Text('About ResQnet'),
+            subtitle: const Text('App information and version'),
             onTap: _showAbout,
           ),
           ListTile(
-            leading: const Icon(Icons.help_outline),
+            leading: const Icon(Icons.help_outline, color: Colors.orange),
             title: const Text('Help & Support'),
+            subtitle: const Text('Get help and contact support'),
             onTap: _showHelp,
           ),
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.logout, color: Color(0xFFE74C3C)),
             title: const Text('Logout'),
-            onTap: () => Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => LoginScreen( // Removed const
-                  toggleTheme: widget.toggleTheme,
-                  isDarkTheme: widget.isDarkTheme,
-                  smsPermissionGranted: false, // Added this, set to false or check actual status
-                ),
-              ),
-            ),
+            subtitle: const Text('Sign out of your account'),
+            onTap: () async {
+              // Clear user session
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.clear();
+              
+              if (mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => LoginScreen(
+                      toggleTheme: widget.toggleTheme,
+                      isDarkTheme: widget.isDarkTheme,
+                      smsPermissionGranted: false,
+                    ),
+                  ),
+                );
+              }
+            },
           ),
         ],
       );

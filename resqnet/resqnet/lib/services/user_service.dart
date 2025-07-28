@@ -64,6 +64,8 @@ class UserService {
     required String hardwareContact,
     required String password,
     String? uid, // Optional UID parameter
+    double? latitude, // Optional latitude
+    double? longitude, // Optional longitude
   }) async {
     // If UID is provided, use it as document ID, otherwise use add() for auto-generated ID
     Map<String, dynamic> userData = {
@@ -74,6 +76,13 @@ class UserService {
       'hardwareContact': hardwareContact,
       'password': password, // Remember: Store hashed passwords in production!
       'createdAt': FieldValue.serverTimestamp(),
+      'lastSeen': FieldValue.serverTimestamp(),
+      'isOnline': true,
+      'currentLocation': {
+        'latitude': latitude ?? 0.0,
+        'longitude': longitude ?? 0.0,
+        'timestamp': FieldValue.serverTimestamp(),
+      },
     };
 
     if (uid != null) {
