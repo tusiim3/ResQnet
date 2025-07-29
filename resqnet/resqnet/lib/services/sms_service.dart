@@ -3,9 +3,15 @@ import 'package:telephony/telephony.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'location_service.dart';
 import 'nearby_rider_alert_service.dart';
 
+// TOP-LEVEL FUNCTION FOR BACKGROUND HANDLING (MUST BE OUTSIDE CLASS)
+@pragma('vm:entry-point')
+Future<void> backgroundMessageHandler(SmsMessage message) async {
+  await SmsService.handleIncomingSmsExternally(message);
+}
 
 class SmsService {
   static final Telephony telephony = Telephony.instance;
@@ -13,13 +19,13 @@ class SmsService {
   static String? _currentUserName;
   static String? _currentUserPhone;
 
-  // Initialize with user data
+  // Initialize with user data (UNCHANGED)
   static void initUserData(String name, String phone) {
     _currentUserName = name;
     _currentUserPhone = phone;
   }
 
-  // Send user contact info to hardware
+  // Send user contact info to hardware (UNCHANGED)
   static Future<bool> sendContactToHardware(String hardwareNumber) async {
     if (_currentUserName == null || _currentUserPhone == null) {
       throw 'User data not initialized';
@@ -36,10 +42,10 @@ class SmsService {
     }
   }
 
-  // Get trusted hardware number
+  // Get trusted hardware number (UNCHANGED)
   static String? get hardwareContact => _trustedNumber;
 
-  // Load trusted number from Firestore
+  // Load trusted number from Firestore (UNCHANGED)
   static Future<void> loadTrustedNumberForUser(String uid) async {
     try {
       DocumentSnapshot userDoc = await FirebaseFirestore.instance
@@ -57,9 +63,12 @@ class SmsService {
     }
   }
 
-  // Send an SMS
+  // Send an SMS (ADDED PERMISSION CHECK)
   static Future<bool> sendSms(String number, String message) async {
     try {
+      if (!await _checkSmsPermissions()) {
+        throw 'SMS permissions denied';
+      }
       await telephony.sendSms(to: number, message: message);
       print("✅ SMS sent to $number");
       return true;
@@ -69,8 +78,12 @@ class SmsService {
     }
   }
 
-  // Initialize SMS listener (foreground + background)
-  static void initSmsListener() {
+  // Initialize SMS listener (UPDATED WITH PERMISSION CHECK)
+  static Future<void> initSmsListener() async {
+    if (!await _checkSmsPermissions()) {
+      throw 'SMS permissions denied';
+    }
+    
     telephony.listenIncomingSms(
       onNewMessage: _handleIncomingSms,
       onBackgroundMessage: backgroundMessageHandler,
@@ -79,21 +92,29 @@ class SmsService {
     print("📡 SMS listener initialized");
   }
 
-  // Handle background message
-  static Future<void> backgroundMessageHandler(SmsMessage message) async {
-    await handleIncomingSmsExternally(message);
+  // NEW: Check and request SMS permissions
+  static Future<bool> _checkSmsPermissions() async {
+    final status = await Permission.sms.status;
+    if (status.isGranted) return true;
+    
+    final result = await Permission.sms.request();
+    if (result.isGranted) return true;
+    
+    if (result.isPermanentlyDenied) {
+      await openAppSettings();
+    }
+    return false;
   }
 
-  // Exposed method to handle incoming SMS from background handler
+  // Exposed method to handle incoming SMS from background handler (UNCHANGED)
   static Future<void> handleIncomingSmsExternally(SmsMessage message) async {
     await _handleIncomingSms(message);
   }
 
-  // Handle incoming messages
+  // Handle incoming messages (UNCHANGED)
   static Future<void> _handleIncomingSms(SmsMessage message) async {
     print("📩 Incoming SMS from ${message.address}: ${message.body}");
 
-    // for background handling
     if (_trustedNumber == null) {
       final prefs = await SharedPreferences.getInstance();
       _trustedNumber = prefs.getString('last_hardware_contact');
@@ -111,28 +132,25 @@ class SmsService {
     }
   }
 
-  // Get current device location
+  // Get current device location (UNCHANGED)
   static Future<Position> _getCurrentPosition() async {
     return await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high,
     );
   }
 
-  // Updated emergency request handler with coordinates
+  // Emergency request handler (UNCHANGED)
   static Future<void> _handleEmergencyRequest(String sender) async {
     try {
-      // Get current position
       final position = await _getCurrentPosition();
       print("📍 Current position: ${position.latitude}, ${position.longitude}");
 
-      // Find nearest hospitals (now getting 3)
       final hospitals = await LocationService.findNearestHospitals(
         position.latitude, 
         position.longitude,
         limit: 3
       );
 
-      // Format the emergency message with coordinates
       String emergencyMessage = '$_currentUserName - ${position.latitude.toStringAsFixed(6)},${position.longitude.toStringAsFixed(6)}:\n';
       
       if (hospitals.isNotEmpty) {
@@ -143,11 +161,9 @@ class SmsService {
         emergencyMessage += 'No nearby hospitals found - call 911';
       }
 
-      // Send formatted emergency SMS FIRST - before Firebase operations
       await sendSms(sender, emergencyMessage);
       print('✅ Emergency SMS sent successfully');
 
-      // Save emergency to Firebase
       final locationService = LocationService();
       await locationService.saveEmergencyLocation(
         latitude: position.latitude,
@@ -156,7 +172,6 @@ class SmsService {
       );
       print('✅ Emergency saved to Firebase');
 
-      // Alert nearby riders within 3km
       final nearbyAlertService = NearbyRiderAlertService();
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {

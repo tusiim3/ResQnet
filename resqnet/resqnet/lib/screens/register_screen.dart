@@ -38,8 +38,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void initState() {
     super.initState();
     // Pre-fill phone number with +256 country code and 7 to guide users
-    _phoneController.text = '+256 7';
-    _helmetContactController.text = '+256 7';
+    _phoneController.text = '+2567';
+    _helmetContactController.text = '+2567';
   }
 
   @override
@@ -225,8 +225,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   keyboardType: TextInputType.phone,
                   onChanged: (value) {
                     // Ensure +256 7 prefix is always there
-                    if (!value.startsWith('+256 7')) {
-                      _phoneController.text = '+256 7';
+                    if (!value.startsWith('+2567')) {
+                      _phoneController.text = '+2567';
                       _phoneController.selection = TextSelection.fromPosition(
                         TextPosition(offset: _phoneController.text.length),
                       );
@@ -239,7 +239,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     if (value.length < 13) {
                       return 'Please enter a valid phone number';
                     }
-                    // Check if it follows the +256 7XXXXXXXX format (more flexible)
+                    // Check if it follows the +2567XXXXXXXX format (more flexible)
                     final phoneRegex = RegExp(r'^\+256\s*7\d{8}');
                     if (!phoneRegex.hasMatch(value)) {
                       return 'Phone number should start with 7 after +256';
@@ -266,9 +266,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       controller: _helmetContactController,
                       keyboardType: TextInputType.phone,
                       onChanged: (value) {
-                        // Ensure +256 7 prefix is always there
-                        if (!value.startsWith('+256 7')) {
-                          _helmetContactController.text = '+256 7';
+                        // Ensure +2567 prefix is always there
+                        if (!value.startsWith('+2567')) {
+                          _helmetContactController.text = '+2567';
                           _helmetContactController.selection = TextSelection.fromPosition(
                             TextPosition(offset: _helmetContactController.text.length),
                           );

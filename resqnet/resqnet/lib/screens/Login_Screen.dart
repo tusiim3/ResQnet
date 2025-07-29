@@ -39,7 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     // Set the default country code with 7 to guide users
-    _phoneController.text = '+256 7';
+    _phoneController.text = '+2567';
     _checkAutoLogin(); // Add auto-login check
     if (!widget.smsPermissionGranted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
