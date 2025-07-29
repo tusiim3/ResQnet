@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'services/location_service.dart';
 
 class LocationDebugScreen extends StatefulWidget {
+  const LocationDebugScreen({super.key});
+
   @override
   _LocationDebugScreenState createState() => _LocationDebugScreenState();
 }

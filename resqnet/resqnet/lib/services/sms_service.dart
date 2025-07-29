@@ -125,6 +125,28 @@ class SmsService {
       final position = await _getCurrentPosition();
       print("📍 Current position: ${position.latitude}, ${position.longitude}");
 
+      // Find nearest hospitals (now getting 3)
+      final hospitals = await LocationService.findNearestHospitals(
+        position.latitude, 
+        position.longitude,
+        limit: 3
+      );
+
+      // Format the emergency message with coordinates
+      String emergencyMessage = '$_currentUserName - ${position.latitude.toStringAsFixed(6)},${position.longitude.toStringAsFixed(6)}:\n';
+      
+      if (hospitals.isNotEmpty) {
+        for (var hospital in hospitals) {
+          emergencyMessage += '${hospital['name']} - ${hospital['emergency']}\n';
+        }
+      } else {
+        emergencyMessage += 'No nearby hospitals found - call 911';
+      }
+
+      // Send formatted emergency SMS FIRST - before Firebase operations
+      await sendSms(sender, emergencyMessage);
+      print('✅ Emergency SMS sent successfully');
+
       // Save emergency to Firebase
       final locationService = LocationService();
       await locationService.saveEmergencyLocation(
@@ -146,28 +168,6 @@ class SmsService {
         );
         print('✅ Notified ${notifiedRiders.length} nearby riders');
       }
-
-      // Find nearest hospitals (now getting 3)
-      final hospitals = await LocationService.findNearestHospitals(
-        position.latitude, 
-        position.longitude,
-        limit: 3
-      );
-
-      // Format the emergency message with coordinates
-      String emergencyMessage = '$_currentUserName - ${position.latitude.toStringAsFixed(6)},${position.longitude.toStringAsFixed(6)}:\n';
-      
-      if (hospitals.isNotEmpty) {
-        for (var hospital in hospitals) {
-          emergencyMessage += '${hospital['name']} - ${hospital['emergency']}\n';
-        }
-      } else {
-        emergencyMessage += 'No nearby hospitals found - call 911';
-      }
-
-      // Send formatted emergency SMS
-      await sendSms(sender, emergencyMessage);
-      print('✅ Emergency SMS sent successfully');
       
     } catch (e, stackTrace) {
       print('❌ Emergency handling failed: $e');

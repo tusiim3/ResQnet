@@ -5,6 +5,7 @@ import 'package:resqnet/services/user_service.dart';
 import 'package:resqnet/services/sms_service.dart';
 import 'package:resqnet/services/auth_service.dart';
 import 'package:resqnet/services/location_service.dart';
+import 'package:resqnet/services/push_notification_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -530,6 +531,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         latitude: currentLocation?.latitude,
         longitude: currentLocation?.longitude,
       );
+
+      // Save FCM token for the newly registered user
+      await PushNotificationService.saveTokenForLoggedInUser(authUser.uid);
 
       if (!mounted) return;
       Navigator.pushReplacement(

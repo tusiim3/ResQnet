@@ -4,6 +4,7 @@ import 'package:resqnet/screens/register_screen.dart';
 import 'package:resqnet/screens/Home_Screen.dart';
 import 'package:resqnet/services/user_service.dart';
 import 'package:resqnet/services/sms_service.dart';
+import 'package:resqnet/services/push_notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -536,6 +537,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     // Save the original user document ID for location tracking
     await prefs.setString('original_user_id', uid);
+
+    // Save FCM token for the logged-in user
+    await PushNotificationService.saveTokenForLoggedInUser(uid);
 
     // Load the trusted number and initialize SMS service
     await SmsService.loadTrustedNumberForUser(uid);
