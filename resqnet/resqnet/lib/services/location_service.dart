@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:math';
 import '../config/api_config.dart';
@@ -60,41 +61,89 @@ class LocationService {
     }
   }
 
-  // Save real-time location from helmet
+  // Save real-time location from helmet - Simplified for class project
   Future<void> saveLocation({
     required double latitude,
     required double longitude,
-    required String helmetId,
-    String? address,
-    double? speed,
-    double? heading,
-    Map<String, dynamic>? safetyData,
   }) async {
+    // Check if user is authenticated with Firebase (for permissions)
+    final firebaseUser = _auth.currentUser;
+    if (firebaseUser == null) return;
+
+    try {
+      // Get the original user document ID from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final originalUserId = prefs.getString('original_user_id');
+      
+      if (originalUserId == null) {
+        print('No original user ID found');
+        return;
+      }
+
+      // Update user's current location in the existing user document
+      await _db.collection('users').doc(originalUserId).set({
+        'currentLocation': {
+          'latitude': latitude,
+          'longitude': longitude,
+          'timestamp': FieldValue.serverTimestamp(),
+        }
+      }, SetOptions(merge: true));
+    } catch (e) {
+      print('Error saving location: $e');
+    }
+  }
+
+  // Update user presence and location when app opens
+  Future<void> updateUserPresence() async {
+    final firebaseUser = _auth.currentUser;
+    if (firebaseUser == null) return;
+
+    try {
+      // Get the original user document ID from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final originalUserId = prefs.getString('original_user_id');
+      
+      if (originalUserId == null) {
+        print('No original user ID found for presence update');
+        return;
+      }
+
+      // Get current GPS location
+      final location = await getCurrentGPSLocation();
+      
+      Map<String, dynamic> updateData = {
+        'lastSeen': FieldValue.serverTimestamp(),
+        'isOnline': true,
+      };
+
+      // If we got GPS location, update it too
+      if (location != null) {
+        updateData['currentLocation'] = {
+          'latitude': location.latitude,
+          'longitude': location.longitude,
+          'timestamp': FieldValue.serverTimestamp(),
+        };
+      }
+
+      await _db.collection('users').doc(originalUserId).set(updateData, SetOptions(merge: true));
+    } catch (e) {
+      print('Error updating user presence: $e');
+    }
+  }
+
+  // Mark user as offline
+  Future<void> markUserOffline() async {
     final userId = _auth.currentUser?.uid;
     if (userId == null) return;
 
-    await _db.collection('locations').add({
-      'userId': userId,
-      'helmetId': helmetId,
-      'latitude': latitude,
-      'longitude': longitude,
-      'address': address,
-      'speed': speed,
-      'heading': heading,
-      'safetyData': safetyData,
-      'timestamp': FieldValue.serverTimestamp(),
-      'isActive': true,
-      'isEmergency': false,
-    });
-
-    // update user's current location
-    await _db.collection('users').doc(userId).update({
-      'currentLocation': {
-        'latitude': latitude,
-        'longitude': longitude,
-        'timestamp': FieldValue.serverTimestamp(),
-      }
-    });
+    try {
+      await _db.collection('users').doc(userId).set({
+        'lastSeen': FieldValue.serverTimestamp(),
+        'isOnline': false,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      print('Error marking user offline: $e');
+    }
   }
 
   // Get user's current location
@@ -116,31 +165,102 @@ class LocationService {
         .snapshots();
   }
 
-  // Save emergency location when crash is detected
+  // Save emergency location when crash is detected - Simplified for class project
   Future<void> saveEmergencyLocation({
     required double latitude,
     required double longitude,
-    required String helmetId,
-    required String alertType,
     String? additionalInfo,
     Map<String, dynamic>? crashData,
   }) async {
-    final userId = _auth.currentUser?.uid;
-    if (userId == null) return;
+    // Use the original user ID from SharedPreferences instead of Firebase Auth UID
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('original_user_id');
+    
+    if (userId == null) {
+      print('No original user ID found for emergency alert');
+      return;
+    }
 
     await _db.collection('emergency_locations').add({
       'userId': userId,
-      'helmetId': helmetId,
       'latitude': latitude,
       'longitude': longitude,
-      'alertType': alertType, // i was thinking that we have diff alerts; crash, panic, low_battery, etc.
       'additionalInfo': additionalInfo,
       'crashData': crashData,
       'timestamp': FieldValue.serverTimestamp(),
       'isEmergency': true,
       'isResolved': false,
       'responseTime': null,
+      'riderUsername': 'Rider', // Using generic name for simplicity
     });
+    
+    print('Emergency alert created for user: $userId');
+  }
+
+  // Get all active emergencies for map display
+  static Stream<List<Map<String, dynamic>>> getAllActiveEmergencies() {
+    return FirebaseFirestore.instance
+        .collection('emergency_locations')
+        .where('isResolved', isEqualTo: false)
+        .orderBy('timestamp', descending: true)
+        .snapshots() // This is the key change: now listening for real-time updates!
+        .asyncMap((querySnapshot) async { // Use asyncMap to process each snapshot asynchronously
+          List<Map<String, dynamic>> emergencies = [];
+
+          for (var doc in querySnapshot.docs) {
+            final data = doc.data();
+            
+            // Get user details for the emergency - now more efficient due to 'riderUsername' denormalization
+            String riderName = 'Unknown Rider';
+            if (data.containsKey('riderUsername')) {
+              riderName = data['riderUsername'];
+            } else {
+              // Fallback to fetching user data if 'riderUsername' wasn't denormalized (less efficient)
+              // In a production app, you'd aim to avoid this fallback entirely.
+              try {
+                final userDoc = await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(data['userId'])
+                    .get();
+                
+                if (userDoc.exists) {
+                  riderName = userDoc.data()?['username'] ?? userDoc.data()?['name'] ?? 'Unknown Rider';
+                }
+              } catch (e) {
+                print('Error getting rider name: $e');
+              }
+            }
+
+            // Calculate time elapsed
+            String timeElapsed = 'Unknown time';
+            if (data['timestamp'] != null) {
+              final emergencyTime = (data['timestamp'] as Timestamp).toDate();
+              final now = DateTime.now();
+              final difference = now.difference(emergencyTime);
+              
+              if (difference.inMinutes < 60) {
+                timeElapsed = '${difference.inMinutes} mins ago';
+              } else if (difference.inHours < 24) {
+                timeElapsed = '${difference.inHours} hours ago';
+              } else {
+                timeElapsed = '${difference.inDays} days ago';
+              }
+            }
+
+            emergencies.add({
+              'id': doc.id,
+              'latitude': data['latitude']?.toDouble() ?? 0.0,
+              'longitude': data['longitude']?.toDouble() ?? 0.0,
+              'riderName': riderName,
+              'alertType': 'Emergency', // Set to Emergency since all are emergencies
+              'timeElapsed': timeElapsed,
+              'additionalInfo': data['additionalInfo'] ?? '',
+              'helmetId': data['helmetId'] ?? 'Unknown',
+              'timestamp': data['timestamp'],
+            });
+          }
+          return emergencies; // Return the list of emergencies
+        });
   }
 
   // Get emergency locations for monitoring dashboard
@@ -164,40 +284,46 @@ class LocationService {
   Future<List<Map<String, dynamic>>> getNearbyRiders({
     required double latitude,
     required double longitude,
-    double radiusKm = 5.0,
+    double radiusKm = 5.0, // Default radius for nearby search
   }) async {
-    // Guys we might have to use GeoFirestore for better calculations. I've left these simplified ones as place holders
-    final snapshot = await _db
-        .collection('users')
-        .where('currentLocation', isNotEqualTo: null)
-        .get();
+    try {
+      // Get all users with current location - Simplified for class project
+      final usersSnapshot = await _db.collection('users')
+          .where('currentLocation', isNotEqualTo: null)
+          .get();
 
-    List<Map<String, dynamic>> nearbyRiders = [];
+      List<Map<String, dynamic>> nearbyRiders = [];
 
-    for (var doc in snapshot.docs) {
-      final data = doc.data();
-      final currentLocation = data['currentLocation'] as Map<String, dynamic>?;
+      for (var doc in usersSnapshot.docs) {
+        final data = doc.data();
+        final currentLocation = data['currentLocation'] as Map<String, dynamic>?;
 
-      if (currentLocation != null) {
-        final riderLat = currentLocation['latitude'] as double;
-        final riderLng = currentLocation['longitude'] as double;
+        if (currentLocation != null) {
+          final riderLat = currentLocation['latitude'] as double?;
+          final riderLng = currentLocation['longitude'] as double?;
 
-        // Calculate distance
-        final distance = _calculateDistance(latitude, longitude, riderLat, riderLng);
+          if (riderLat != null && riderLng != null) {
+            final distance = _calculateDistance(latitude, longitude, riderLat, riderLng);
 
-        if (distance <= radiusKm) {
-          nearbyRiders.add({
-            'userId': doc.id,
-            'username': data['username'] ?? 'Unknown',
-            'latitude': riderLat,
-            'longitude': riderLng,
-            'distance': distance,
-          });
+            if (distance <= radiusKm) {
+              nearbyRiders.add({
+                'userId': doc.id,
+                'username': data['username'] ?? 'Unknown',
+                'latitude': riderLat,
+                'longitude': riderLng,
+                'distance': distance,
+              });
+            }
+          }
         }
       }
-    }
 
-    return nearbyRiders;
+      nearbyRiders.sort((a, b) => (a['distance'] as double).compareTo(b['distance'] as double));
+      return nearbyRiders;
+    } catch (e) {
+      print('Error getting nearby riders: $e');
+      return [];
+    }
   }
 
   // Find nearest hospitals based on emergency location (returns multiple hospitals)
@@ -239,7 +365,7 @@ class LocationService {
             lng,
           );
 
-          // Get additional details for the hospital
+          // Get additional details for the hospital (N+1 HTTP call here, fine for small limit)
           String? phoneNumber = await _getPlacePhone(place['place_id'], apiKey);
           
           return {
@@ -314,6 +440,7 @@ class LocationService {
     return degrees * (pi / 180);
   }
 
+  // Instance version of distance calculation
   double _calculateDistance(double lat1, double lng1, double lat2, double lng2) {
     const double earthRadius = 6371; // km
     final double dLat = _toRadians(lat2 - lat1);

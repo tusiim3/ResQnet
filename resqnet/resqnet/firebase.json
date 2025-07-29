@@ -1,1 +1,41 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"smartbodahelmet","appId":"1:341222348718:android:624a84f071548cc8a99a3f","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"smartbodahelmet","configurations":{"android":"1:341222348718:android:624a84f071548cc8a99a3f","ios":"1:341222348718:ios:20f96d4dfa3e4d3ca99a3f","macos":"1:341222348718:ios:20f96d4dfa3e4d3ca99a3f","web":"1:341222348718:web:1caa58b341648c15a99a3f","windows":"1:341222348718:web:e6bae70328bfef43a99a3f"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "smartbodahelmet",
+          "appId": "1:341222348718:android:624a84f071548cc8a99a3f",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "smartbodahelmet",
+          "configurations": {
+            "android": "1:341222348718:android:624a84f071548cc8a99a3f",
+            "ios": "1:341222348718:ios:20f96d4dfa3e4d3ca99a3f",
+            "macos": "1:341222348718:ios:20f96d4dfa3e4d3ca99a3f",
+            "web": "1:341222348718:web:1caa58b341648c15a99a3f",
+            "windows": "1:341222348718:web:e6bae70328bfef43a99a3f"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint"
+      ]
+    }
+  ]
+}

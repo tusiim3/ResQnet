@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:math';
+import 'push_notification_service.dart';
 
 class NearbyRiderAlertService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -14,7 +15,6 @@ class NearbyRiderAlertService {
     required String emergencyAlertId,
     required double latitude,
     required double longitude,
-    required String alertType,
     String? emergencyDescription,
     double radiusKm = DEFAULT_ALERT_RADIUS_KM,
   }) async {
@@ -43,7 +43,7 @@ class NearbyRiderAlertService {
           targetRiderId: rider['userId'],
           emergencyAlertId: emergencyAlertId,
           emergencyLocation: {'latitude': latitude, 'longitude': longitude},
-          alertType: alertType,
+          alertType: 'Emergency', // Fixed to use Emergency
           emergencyUserName: currentUserName,
           description: emergencyDescription,
           distanceKm: rider['distance'],
@@ -131,11 +131,12 @@ class NearbyRiderAlertService {
     String? description,
     required double distanceKm,
   }) async {
+    // Save alert to database
     await _db.collection('rider_alerts').add({
       'targetRiderId': targetRiderId,
       'emergencyAlertId': emergencyAlertId,
       'emergencyLocation': emergencyLocation,
-      'alertType': alertType, // 'crash', 'panic', 'breakdown', etc.
+      'alertType': 'Emergency', // Fixed to Emergency since all are emergencies
       'emergencyUserName': emergencyUserName,
       'description': description,
       'distanceKm': distanceKm,
@@ -151,6 +152,20 @@ class NearbyRiderAlertService {
       'unreadAlerts': FieldValue.increment(1),
       'lastAlertReceived': FieldValue.serverTimestamp(),
     });
+
+    // Send push notification to the nearby rider
+    try {
+      await PushNotificationService.showEmergencyAlert(
+        title: '🚨 Emergency Alert Nearby',
+        body: '$emergencyUserName needs help! Distance: ${distanceKm.toStringAsFixed(1)}km away',
+        location: 'Lat: ${emergencyLocation['latitude']}, Lng: ${emergencyLocation['longitude']}',
+        distance: '${distanceKm.toStringAsFixed(1)}km',
+        alertId: emergencyAlertId,
+      );
+      print('Push notification sent to rider: $targetRiderId');
+    } catch (e) {
+      print('Error sending push notification to rider $targetRiderId: $e');
+    }
   }
 
   // Log the nearby alert activity

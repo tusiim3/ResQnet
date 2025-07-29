@@ -1,6 +1,6 @@
-# Smart Arduino Helmet
+# Smart Arduino Helmet/ResQnet
 
-Smart Arduino Helmet is an embedded system designed to improve motorcycle rider safety by reducing response times in case of emergencies. It combines sensors and microcontrollers to detect helmet usage, monitor rider conditions, and trigger smart alerts. Collected data is sent to a companion mobile app, providing real-time notifications, accident alerts, and analytics for both riders and emergency contacts.
+Smart Arduino Helmet/ ResQnet is an embedded system designed to improve motorcycle rider safety by reducing response times in case of emergencies. It combines sensors and microcontrollers to detect helmet usage, monitor rider conditions, and trigger smart alerts. Collected data is sent to a companion mobile app, providing real-time notifications, accident alerts, and analytics for both riders and emergency contacts.
 
 ## Features
 
@@ -13,17 +13,17 @@ Smart Arduino Helmet is an embedded system designed to improve motorcycle rider 
 ## Technologies Used
 
 - C/C++ for embedded development
-- Microcontrollers (e.g., Arduino, ESP32, STM32)
-- Sensors (e.g., accelerometer, proximity, vibration)
+- Microcontroller (Arduino)
+- Sensors (accelerometer & gyroscope)
 - SIM800L GSM module for wireless communication
-- Mobile app (Android/iOS)
+- Mobile app 
 - IoT protocols
 
 ## Getting Started
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/tusiim3/ResQnet.git
+   git clone https://github.com/tusiim3/Smart-Arduino-Helmet.git
    ```
 2. **Set up your hardware:**
    - Assemble the smart helmet with the required sensors and microcontroller.
