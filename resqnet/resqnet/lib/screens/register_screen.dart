@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:resqnet/screens/home_screen.dart';
 import 'package:resqnet/services/user_service.dart';
 import 'package:resqnet/services/sms_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class RegisterScreen extends StatefulWidget {
   final Function(bool) toggleTheme;

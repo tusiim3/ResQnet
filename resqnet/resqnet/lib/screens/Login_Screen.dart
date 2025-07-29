@@ -5,6 +5,8 @@ import 'package:resqnet/screens/Home_Screen.dart';
 import 'package:resqnet/services/user_service.dart';
 import 'package:resqnet/services/sms_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 
 class LoginScreen extends StatefulWidget {
@@ -32,6 +34,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _showPermissionWarning = false;
 
   final UserService _userService = UserService();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
 
   @override
@@ -41,6 +45,28 @@ class _LoginScreenState extends State<LoginScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         setState(() => _showPermissionWarning = true);
       });
+    }
+  }
+
+  // Check if user is already logged in
+  Future<void> _checkAutoLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedUserId = prefs.getString('logged_in_user_id');
+    final rememberMe = prefs.getBool('remember_me') ?? false;
+
+    if (savedUserId != null && rememberMe) {
+      // Auto-login user
+      try {
+        final userData = await _userService.getUserData(savedUserId);
+        if (userData != null) {
+          await _completeLogin(savedUserId, userData);
+        }
+      } catch (e) {
+        print('Auto-login failed: $e');
+        // Clear invalid saved data
+        await prefs.remove('logged_in_user_id');
+        await prefs.remove('remember_me');
+      }
     }
   }
 
@@ -115,15 +141,31 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           const SizedBox(height: 20),
                           //App Title
-                          const Text(
-                            'ResQnet',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF2C3E50), // Consider using Theme.of(context).textTheme
+                          Center(
+                            child: const Text.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: 'ResQ',
+                                    style: TextStyle(
+                                      color: Colors.red,
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text: 'net',
+                                    style: TextStyle(
+                                      color: Colors.blue,
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                            textAlign: TextAlign.center,
                           ),
+
                           const SizedBox(height: 10),
                           //Subtitle
                           const Text(
@@ -415,7 +457,71 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _handleLogin() async {
+  // void _handleLogin() async {
+  //   final phone = _phoneController.text.trim();
+  //   final password = _passwordController.text.trim();
+
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (context) => const Center(child: CircularProgressIndicator()),
+  //   );
+
+  //   try {
+  //     final userSnapshot = await _userService.getUserByPhone(phone);
+  //     Navigator.of(context).pop();
+
+  //     if (userSnapshot == null) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(content: Text('No user found with this phone number.')),
+  //       );
+  //       return;
+  //     }
+
+  //     final userData = userSnapshot.data() as Map<String, dynamic>;
+  //     if (userData['password'] == password) {
+        
+  //       // get the user's UID from the document id
+  //       final uid = userSnapshot.id;
+  //       final hardwareContact = userData['hardwareContact'] as String?;
+
+  //       // save the contact locally for the background service
+  //       if (hardwareContact != null) {
+  //         final prefs = await SharedPreferences.getInstance();
+  //         await prefs.setString('last_hardware_contact', hardwareContact);
+  //         print("🔍 Saved hardwareContact to SharedPreferences: $hardwareContact");
+  //       } else {
+  //         print("⚠️ No hardwareContact found in user data for UID: $uid");
+  //       }
+
+  //       // load the trustednumber
+  //       await SmsService.loadTrustedNumberForUser(uid);
+
+  //       // initialize the sms listener
+  //       SmsService.initSmsListener();
+
+  //       Navigator.pushReplacement(
+  //         context,
+  //         MaterialPageRoute(
+  //           builder: (context) => HomeScreen( // Removed const
+  //             toggleTheme: widget.toggleTheme,
+  //             isDarkTheme: widget.isDarkTheme,
+  //           ),
+  //         ),
+  //       );
+  //     } else {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(content: Text('Incorrect password.')),
+  //       );
+  //     }
+  //   } catch (e) {
+  //     Navigator.of(context).pop();
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(content: Text('Login failed: $e')),
+  //     );
+  //   }
+  // }
+    Future<void> _handleLogin() async {
     final phone = _phoneController.text.trim();
     final password = _passwordController.text.trim();
 
@@ -438,35 +544,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final userData = userSnapshot.data() as Map<String, dynamic>;
       if (userData['password'] == password) {
-        
-        // get the user's UID from the document id
         final uid = userSnapshot.id;
-        final hardwareContact = userData['hardwareContact'] as String?;
-
-        // save the contact locally for the background service
-        if (hardwareContact != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('last_hardware_contact', hardwareContact);
-          print("🔍 Saved hardwareContact to SharedPreferences: $hardwareContact");
-        } else {
-          print("⚠️ No hardwareContact found in user data for UID: $uid");
-        }
-
-        // load the trustednumber
-        await SmsService.loadTrustedNumberForUser(uid);
-
-        // initialize the sms listener
-        SmsService.initSmsListener();
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => HomeScreen( // Removed const
-              toggleTheme: widget.toggleTheme,
-              isDarkTheme: widget.isDarkTheme,
-            ),
-          ),
-        );
+        await _completeLogin(uid, userData);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Incorrect password.')),
@@ -478,5 +557,41 @@ class _LoginScreenState extends State<LoginScreen> {
         SnackBar(content: Text('Login failed: $e')),
       );
     }
+  }
+
+  Future<void> _completeLogin(String uid, Map<String, dynamic> userData) async {
+    final hardwareContact = userData['hardwareContact'] as String?;
+
+    // Save user session data
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('logged_in_user_id', uid);
+    await prefs.setBool('remember_me', _rememberMe);
+    await prefs.setString('user_name', userData['fullName'] ?? userData['username'] ?? 'User');
+    await prefs.setString('user_phone', userData['phone'] ?? '');
+    await prefs.setString('user_email', userData['email'] ?? '');
+
+    // Save hardware contact for SMS service
+    if (hardwareContact != null) {
+      await prefs.setString('last_hardware_contact', hardwareContact);
+      print("🔍 Saved hardwareContact to SharedPreferences: $hardwareContact");
+    } else {
+      print("⚠️ No hardwareContact found in user data for UID: $uid");
+    }
+
+    // Load the trusted number and initialize SMS service
+    await SmsService.loadTrustedNumberForUser(uid);
+    SmsService.initSmsListener();
+
+    // Navigate to home screen
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HomeScreen(
+          toggleTheme: widget.toggleTheme,
+          isDarkTheme: widget.isDarkTheme,
+        ),
+      ),
+    );
   }
 }
