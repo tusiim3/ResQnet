@@ -13,17 +13,17 @@ Smart Arduino Helmet is an embedded system designed to improve motorcycle rider 
 ## Technologies Used
 
 - C/C++ for embedded development
-- Microcontrollers (e.g., Arduino, ESP32, STM32)
-- Sensors (e.g., accelerometer, proximity, vibration)
+- Microcontroller (Arduino)
+- Sensors (accelerometer & gyroscope)
 - SIM800L GSM module for wireless communication
-- Mobile app (Android/iOS)
+- Mobile app 
 - IoT protocols
 
 ## Getting Started
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/tusiim3/ResQnet.git
+   git clone https://github.com/tusiim3/Smart-Arduino-Helmet.git
    ```
 2. **Set up your hardware:**
    - Assemble the smart helmet with the required sensors and microcontroller.
