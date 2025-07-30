@@ -8,6 +8,8 @@ import '../services/location_service.dart';
 import '../services/user_service.dart';
 import '../services/nearby_rider_alert_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
@@ -140,9 +142,12 @@ class _HomeTabState extends State<_HomeTab> {
   final LocationService _locationService = LocationService();
   Timer? _locationTimer;
   
-  // User data that will be loaded from Firebase
+  // Dynamic user data that will be loaded from SharedPreferences/Firebase
   String userName = "Loading...";
-  String userEmail = "Loading...";
+  String username = "Loading..."; // For greeting display
+  String userEmail = "";
+  String userPhone = "";
+  bool isOnline = true;
   int tripsToday = 0;
   int totalTrips = 0;
   bool _isLoading = true;
@@ -166,6 +171,7 @@ class _HomeTabState extends State<_HomeTab> {
         print('DEBUG: Home screen timeout - stopping loading after 8 seconds');
         setState(() {
           userName = 'Rider';
+          username = 'Rider';
           _isLoading = false;
         });
       }
@@ -221,6 +227,32 @@ class _HomeTabState extends State<_HomeTab> {
   Future<void> _loadUserData() async {
     print('DEBUG: Loading user data...');
     try {
+      // First try to load from SharedPreferences (saved during login)
+      final prefs = await SharedPreferences.getInstance();
+      final savedUserName = prefs.getString('user_name');
+      final savedUsername = prefs.getString('username') ?? prefs.getString('user_name'); // Check 'username' first
+      final savedUserEmail = prefs.getString('user_email');
+      final savedUserPhone = prefs.getString('user_phone');
+      
+      if (savedUserName != null && savedUserName.isNotEmpty) {
+        // Use SharedPreferences data (faster and more reliable)
+        print('DEBUG: Loading from SharedPreferences...');
+        setState(() {
+          userName = savedUserName;
+          username = savedUsername ?? savedUserName; // Use username if available, fallback to userName
+          userEmail = savedUserEmail ?? '';
+          userPhone = savedUserPhone ?? '';
+          // Keep trip data static or load from Firebase if needed
+          tripsToday = 24; // You can load this from Firebase later
+          totalTrips = 156; // You can load this from Firebase later
+          _isLoading = false;
+        });
+        print('DEBUG: User data loaded from SharedPreferences: userName=$userName, username=$username');
+        return;
+      }
+      
+      // Fallback to Firebase if SharedPreferences is empty
+      print('DEBUG: SharedPreferences empty, trying Firebase...');
       final User? user = _auth.currentUser;
       print('DEBUG: Current user: ${user?.uid ?? 'No user logged in'}');
       
@@ -230,20 +262,31 @@ class _HomeTabState extends State<_HomeTab> {
         print('DEBUG: User data received: $userData');
         
         if (userData != null && mounted) {
+          print('DEBUG: Firebase userData: $userData');
+          print('DEBUG: userData["username"]: ${userData['username']}');
+          print('DEBUG: userData["fullName"]: ${userData['fullName']}');
           setState(() {
-            userName = userData['username'] ?? userData['fullName'] ?? 'Rider';
+            userName = userData['fullName'] ?? userData['name'] ?? userData['username'] ?? 'Rider';
+            username = userData['username'] ?? userData['fullName'] ?? userData['name'] ?? 'Rider';
             userEmail = userData['email'] ?? '';
-            // You can add trip data to Firebase later
+            userPhone = userData['phone'] ?? '';
             tripsToday = userData['tripsToday'] ?? 0;
             totalTrips = userData['totalTrips'] ?? 0;
             _isLoading = false;
           });
-          print('DEBUG: User data loaded successfully');
+          print('DEBUG: User data loaded from Firebase: userName=$userName, username=$username');
         } else {
-          print('DEBUG: No user data found or component unmounted');
+          print('DEBUG: No user data found, creating basic user document...');
+          await _createBasicUserDocument(user);
+          
           if (mounted) {
             setState(() {
-              userName = 'Rider';
+              userName = user.displayName ?? user.phoneNumber ?? 'Rider';
+              username = user.displayName ?? user.phoneNumber ?? 'Rider';
+              userEmail = user.email ?? '';
+              userPhone = user.phoneNumber ?? '';
+              tripsToday = 0;
+              totalTrips = 0;
               _isLoading = false;
             });
           }
@@ -253,6 +296,7 @@ class _HomeTabState extends State<_HomeTab> {
         if (mounted) {
           setState(() {
             userName = 'Rider';
+            username = 'Rider';
             _isLoading = false;
           });
         }
@@ -262,9 +306,52 @@ class _HomeTabState extends State<_HomeTab> {
       if (mounted) {
         setState(() {
           userName = 'Rider';
+          username = 'Rider';
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _createBasicUserDocument(User user) async {
+    try {
+      print('DEBUG: Creating basic user document for UID: ${user.uid}');
+      
+      // Get current location if possible
+      LatLng? currentLocation = await LocationService.getCurrentGPSLocation();
+      
+      // Determine what information we have based on auth method
+      String email = user.email ?? '';
+      String phone = user.phoneNumber ?? '';
+      String displayName = user.displayName ?? '';
+      
+      // If we have phone but no email, we should prompt for email later
+      // If we have email but no phone, we should prompt for phone later
+      
+      await _userService.saveUserDataCustom(
+        fullName: displayName.isNotEmpty ? displayName : (phone.isNotEmpty ? 'Phone User' : 'Email User'),
+        username: displayName.isNotEmpty ? displayName : 
+                  (phone.isNotEmpty ? phone.replaceAll('+', '') : email.split('@')[0]),
+        email: email,
+        phone: phone,
+        hardwareContact: '', // Will be empty initially
+        password: '', // Not stored for security
+        uid: user.uid,
+        latitude: currentLocation?.latitude,
+        longitude: currentLocation?.longitude,
+      );
+      
+      print('DEBUG: Basic user document created successfully');
+      print('DEBUG: Email: $email, Phone: $phone');
+      
+      // If missing critical information, we should prompt user to complete profile
+      if (email.isEmpty || phone.isEmpty) {
+        print('DEBUG: User profile incomplete - missing ${email.isEmpty ? 'email' : 'phone'}');
+        // You could set a flag here to show a "Complete Profile" prompt
+      }
+      
+    } catch (e) {
+      print('ERROR: Failed to create basic user document: $e');
     }
   }
 
@@ -313,7 +400,7 @@ class _HomeTabState extends State<_HomeTab> {
                 children: [
                   Expanded(
                     child: Text(
-                      "${greeting()}, $userName",
+                      "${greeting()}, $username!",
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
@@ -329,12 +416,12 @@ class _HomeTabState extends State<_HomeTab> {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF2ECC71),
+                      color: isOnline ? const Color(0xFF2ECC71) : Colors.grey,
                       borderRadius: BorderRadius.circular(15),
                     ),
-                    child: const Text(
-                      'Online',
-                      style: TextStyle(
+                    child: Text(
+                      isOnline ? 'Online' : 'Offline',
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
@@ -455,6 +542,43 @@ class _HomeTabState extends State<_HomeTab> {
               ),
 
               const SizedBox(height: 30),
+
+              // User Info Card 
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.circular(15),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Profile Information',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF2C3E50),
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    if (userEmail.isNotEmpty) 
+                      _buildUserInfoRow('📧', 'Email', userEmail),
+                    if (userPhone.isNotEmpty) 
+                      _buildUserInfoRow('📱', 'Phone', userPhone),
+                    _buildUserInfoRow('👤', 'Full Name', userName),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
 
               // Emergency Contacts Section
               Container(
@@ -742,6 +866,45 @@ class _HomeTabState extends State<_HomeTab> {
             },
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE74C3C)),
             child: const Text('Send Alert', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUserInfoRow(String icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Text(
+            icon,
+            style: const TextStyle(fontSize: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF2C3E50),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

@@ -5,6 +5,7 @@ import 'package:resqnet/screens/map_screen.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../services/location_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AlertFeedScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
@@ -16,6 +17,39 @@ class AlertFeedScreen extends StatefulWidget {
 }
 
 class _AlertFeedScreenState extends State<AlertFeedScreen> {
+  
+  // Get filtered emergencies excluding user's dismissed alerts
+  Stream<List<Map<String, dynamic>>> _getFilteredEmergencies() async* {
+    final prefs = await SharedPreferences.getInstance();
+    final currentUserId = prefs.getString('logged_in_user_id') ?? '';
+    
+    // Get user's dismissed alerts
+    Set<String> dismissedAlerts = {};
+    try {
+      final dismissedDoc = await FirebaseFirestore.instance
+          .collection('user_dismissed_alerts')
+          .doc(currentUserId)
+          .get();
+      
+      if (dismissedDoc.exists) {
+        final data = dismissedDoc.data();
+        if (data != null && data['dismissedAlerts'] != null) {
+          dismissedAlerts = Set<String>.from(data['dismissedAlerts']);
+        }
+      }
+    } catch (e) {
+      print('Error loading dismissed alerts: $e');
+    }
+    
+    // Listen to all emergencies and filter out dismissed ones
+    await for (final emergencies in LocationService.getAllActiveEmergencies()) {
+      final filteredEmergencies = emergencies
+          .where((emergency) => !dismissedAlerts.contains(emergency['id']))
+          .toList();
+      yield filteredEmergencies;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -90,7 +124,7 @@ class _AlertFeedScreenState extends State<AlertFeedScreen> {
         ),
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: LocationService.getAllActiveEmergencies(),
+        stream: _getFilteredEmergencies(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -163,6 +197,13 @@ class _AlertFeedScreenState extends State<AlertFeedScreen> {
     
     final location = 'Lat: ${emergency['latitude']?.toStringAsFixed(4)}, Lng: ${emergency['longitude']?.toStringAsFixed(4)}';
     
+    // Try to get rider name from multiple sources
+    String riderName = emergency['riderUsername'] ?? 
+                      emergency['riderName'] ?? 
+                      emergency['fullName'] ?? 
+                      emergency['username'] ?? 
+                      'Unknown Rider';
+    
     return AlertItem(
       id: emergency['id'] ?? '',
       title: emergency['additionalInfo'] ?? 'Emergency Alert',
@@ -172,7 +213,8 @@ class _AlertFeedScreenState extends State<AlertFeedScreen> {
       isResolved: emergency['isResolved'] ?? false,
       latitude: emergency['latitude']?.toDouble(),
       longitude: emergency['longitude']?.toDouble(),
-      riderUsername: emergency['riderUsername'] ?? 'Unknown Rider',
+      riderUsername: riderName,
+      userId: emergency['userId'], // Add userId from emergency data
     );
   }
 
@@ -321,25 +363,31 @@ class _AlertFeedScreenState extends State<AlertFeedScreen> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        _dismissAlert(alert);
+                    child: FutureBuilder<bool>(
+                      future: _isCurrentUserAlertCreator(alert),
+                      builder: (context, snapshot) {
+                        final isCreator = snapshot.data ?? false;
+                        return ElevatedButton(
+                          onPressed: () {
+                            _dismissAlert(alert);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isCreator ? const Color(0xFFE74C3C) : const Color(0xFF95A5A6),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: Text(
+                            isCreator ? 'Resolve' : 'Dismiss',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white,
+                            ),
+                          ),
+                        );
                       },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF95A5A6),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: const Text(
-                        'Dismiss',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white,
-                        ),
-                      ),
                     ),
                   ),
                 ],
@@ -513,16 +561,92 @@ class _AlertFeedScreenState extends State<AlertFeedScreen> {
     );
   }
 
-  void _handleDismiss(AlertItem alert) {
-    // Update the emergency as resolved in Firebase
-    _updateEmergencyStatus(alert.id, true);
+  void _handleDismiss(AlertItem alert) async {
+    // Get current user ID
+    final prefs = await SharedPreferences.getInstance();
+    final currentUserId = prefs.getString('logged_in_user_id');
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Alert dismissed'),
-        backgroundColor: Color(0xFF95A5A6),
+    if (currentUserId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error: User not logged in'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Check if user is the alert creator - only they can resolve it globally
+    if (alert.userId == currentUserId) {
+      // Alert creator can resolve it for everyone (removes from map and all feeds)
+      _showResolveConfirmation(alert);
+    } else {
+      // Other users can only dismiss it from their personal feed
+      _addToDismissedAlerts(alert.id, currentUserId);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Alert dismissed from your feed'),
+          backgroundColor: Color(0xFF95A5A6),
+        ),
+      );
+    }
+  }
+
+  void _showResolveConfirmation(AlertItem alert) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Resolve Alert'),
+        content: const Text(
+          'You created this alert. Resolving it will remove it from the map and all users\' feeds. Are you sure?'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _updateEmergencyStatus(alert.id, true);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Alert resolved and removed from map'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+            child: const Text('Resolve'),
+          ),
+        ],
       ),
     );
+  }
+
+  // Check if current user is the alert creator
+  Future<bool> _isCurrentUserAlertCreator(AlertItem alert) async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentUserId = prefs.getString('logged_in_user_id');
+    return currentUserId != null && alert.userId == currentUserId;
+  }
+
+  // Add alert to user's personal dismissed list
+  void _addToDismissedAlerts(String alertId, String userId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('user_dismissed_alerts')
+          .doc(userId)
+          .set({
+            'dismissedAlerts': FieldValue.arrayUnion([alertId]),
+            'lastUpdated': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      
+      // Refresh the stream to update UI
+      setState(() {});
+    } catch (e) {
+      print('Error adding to dismissed alerts: $e');
+    }
   }
 
   void _updateEmergencyStatus(String emergencyId, bool isResolved) async {
@@ -586,6 +710,7 @@ class AlertItem {
   final double? latitude;
   final double? longitude;
   final String riderUsername;
+  final String? userId; // Add userId field
 
   AlertItem({
     required this.id,
@@ -597,6 +722,7 @@ class AlertItem {
     this.latitude,
     this.longitude,
     required this.riderUsername,
+    this.userId, // Add userId parameter
   });
 }
 

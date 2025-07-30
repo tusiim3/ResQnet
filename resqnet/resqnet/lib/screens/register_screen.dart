@@ -3,6 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:resqnet/screens/home_screen.dart';
 import 'package:resqnet/services/user_service.dart';
 import 'package:resqnet/services/sms_service.dart';
+import 'package:resqnet/services/auth_service.dart';
+import 'package:resqnet/services/location_service.dart';
+import 'package:resqnet/services/push_notification_service.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class RegisterScreen extends StatefulWidget {
   final Function(bool) toggleTheme;
@@ -28,6 +32,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
 
   final UserService _userService = UserService();
+  final AuthService _authService = AuthService();
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill phone number with +256 country code and 7 to guide users
+    _phoneController.text = '+2567';
+    _helmetContactController.text = '+2567';
+  }
 
   @override
   void dispose() {
@@ -208,11 +221,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 _buildTextField(
                   label: 'Phone Number',
                   controller: _phoneController,
-                  hint: '+256 700 000 000',
+                  hint: '+256 7XXXXXXXX',
                   keyboardType: TextInputType.phone,
+                  onChanged: (value) {
+                    // Ensure +256 7 prefix is always there
+                    if (!value.startsWith('+2567')) {
+                      _phoneController.text = '+2567';
+                      _phoneController.selection = TextSelection.fromPosition(
+                        TextPosition(offset: _phoneController.text.length),
+                      );
+                    }
+                  },
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'Please enter your phone number';
+                    }
+                    if (value.length < 13) {
+                      return 'Please enter a valid phone number';
+                    }
+                    // Check if it follows the +2567XXXXXXXX format (more flexible)
+                    final phoneRegex = RegExp(r'^\+256\s*7\d{8}');
+                    if (!phoneRegex.hasMatch(value)) {
+                      return 'Phone number should start with 7 after +256';
                     }
                     return null;
                   },
@@ -235,8 +265,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     TextFormField(
                       controller: _helmetContactController,
                       keyboardType: TextInputType.phone,
+                      onChanged: (value) {
+                        // Ensure +2567 prefix is always there
+                        if (!value.startsWith('+2567')) {
+                          _helmetContactController.text = '+2567';
+                          _helmetContactController.selection = TextSelection.fromPosition(
+                            TextPosition(offset: _helmetContactController.text.length),
+                          );
+                        }
+                      },
                       decoration: InputDecoration(
-                        hintText: '+256 700 000 000',
+                        hintText: '+256 7XXXXXXXX',
                         labelText: 'Phone Number',
                         filled: true,
                         fillColor: Colors.white,
@@ -267,6 +306,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter hardware phone number';
+                        }
+                        if (value.length < 13) {
+                          return 'Please enter a valid phone number';
+                        }
+                        // Check if it follows the +256 7XXXXXXXX format (more flexible)
+                        final phoneRegex = RegExp(r'^\+256\s*7\d{8}');
+                        if (!phoneRegex.hasMatch(value)) {
+                          return 'Phone number should start with 7 after +256';
                         }
                         return null;
                       },
@@ -386,6 +433,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     bool obscureText = false,
     Widget? suffixIcon,
     String? Function(String?)? validator,
+    void Function(String)? onChanged,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -403,6 +451,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           controller: controller,
           keyboardType: keyboardType,
           obscureText: obscureText,
+          onChanged: onChanged,
           decoration: InputDecoration(
             hintText: hint,
             suffixIcon: suffixIcon,
@@ -457,7 +506,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
         throw 'Failed to register with hardware';
       }
 
-      // Save user data to Firestore
+      // Create Firebase Auth user first
+      final authUser = await _authService.register(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
+      );
+
+      if (authUser == null) {
+        throw 'Failed to create user account';
+      }
+
+      // Get user's current location
+      LatLng? currentLocation = await LocationService.getCurrentGPSLocation();
+      
+      // Save user data to Firestore using the Firebase Auth UID
       await _userService.saveUserDataCustom(
         fullName: _nameController.text.trim(),
         username: _usernameController.text.trim(),
@@ -465,7 +527,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
         phone: _phoneController.text.trim(),
         hardwareContact: _helmetContactController.text.trim(),
         password: _passwordController.text.trim(),
+        uid: authUser.uid, // Pass the Firebase Auth UID
+        latitude: currentLocation?.latitude,
+        longitude: currentLocation?.longitude,
       );
+
+      // Save FCM token for the newly registered user
+      await PushNotificationService.saveTokenForLoggedInUser(authUser.uid);
 
       if (!mounted) return;
       Navigator.pushReplacement(

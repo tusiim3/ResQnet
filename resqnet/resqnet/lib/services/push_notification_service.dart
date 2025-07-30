@@ -1,7 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -24,7 +23,6 @@ class PushNotificationService {
       FlutterLocalNotificationsPlugin();
   static final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
-  static final FirebaseAuth _auth = FirebaseAuth.instance;
   
   static bool _isInitialized = false;
 
@@ -94,9 +92,6 @@ class PushNotificationService {
 
   // Save FCM token to Firestore for the current user
   static Future<void> _saveDeviceToken() async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-
     try {
       final token = await _firebaseMessaging.getToken();
       if (token != null) {
@@ -110,6 +105,10 @@ class PushNotificationService {
             'lastTokenUpdate': FieldValue.serverTimestamp(),
           });
           print('FCM Token saved for user $originalUserId: $token');
+        } else {
+          // Store token temporarily until user logs in
+          await prefs.setString('pending_fcm_token', token);
+          print('FCM Token stored temporarily until user logs in: $token');
         }
       }
     } catch (e) {
@@ -127,8 +126,43 @@ class PushNotificationService {
           'lastTokenUpdate': FieldValue.serverTimestamp(),
         });
         print('FCM Token refreshed for user $originalUserId: $newToken');
+      } else {
+        // Store refreshed token temporarily until user logs in
+        await prefs.setString('pending_fcm_token', newToken);
+        print('FCM Token refreshed and stored temporarily: $newToken');
       }
     });
+  }
+
+  // Call this method after user login to save any pending FCM token
+  static Future<void> saveTokenForLoggedInUser(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pendingToken = prefs.getString('pending_fcm_token');
+      
+      if (pendingToken != null) {
+        await _db.collection('users').doc(userId).update({
+          'fcmToken': pendingToken,
+          'lastTokenUpdate': FieldValue.serverTimestamp(),
+        });
+        
+        // Remove the pending token
+        await prefs.remove('pending_fcm_token');
+        print('Pending FCM Token saved for logged in user $userId: $pendingToken');
+      } else {
+        // Get current token if no pending token
+        final token = await _firebaseMessaging.getToken();
+        if (token != null) {
+          await _db.collection('users').doc(userId).update({
+            'fcmToken': token,
+            'lastTokenUpdate': FieldValue.serverTimestamp(),
+          });
+          print('Current FCM Token saved for logged in user $userId: $token');
+        }
+      }
+    } catch (e) {
+      print('Error saving FCM token for logged in user: $e');
+    }
   }
 
   // Handle foreground messages
